@@ -1,0 +1,1 @@
+compc -source-path src -include-classes Fonts -output src/assets/fonts.swc

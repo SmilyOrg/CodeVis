@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8"/>
+	<title>CodeVis</title>
+	<meta name="description" content="" />
+	
+	<script src="js/swfobject.js"></script>
+	<script>
+		var flashvars = {
+		};
+		var params = {
+			menu: "false",
+			scale: "noScale",
+			allowFullscreen: "true",
+			allowScriptAccess: "always",
+			bgcolor: "",
+			wmode: "direct" // can cause issues with FP settings & webcam
+		};
+		var attributes = {
+			id: "swfContent"
+		};
+		
+		function locationHashChanged() {
+			var el = document.getElementById(attributes.id);
+			el.locationHashChanged(location.hash);
+		}
+		
+		function swfInit() {
+			locationHashChanged();
+			window.addEventListener("hashchange", locationHashChanged);
+		}
+		
+		function resizeSWF(w, h) {
+			var el = document.getElementById(attributes.id);
+			el.setAttribute("width", w);
+			el.setAttribute("height", h);
+		}
+		
+		swfobject.embedSWF("CodeVis.swf", "altContent", "100%", "100%", "10.0.0", "expressInstall.swf", flashvars, params, attributes);
+		
+	</script>
+	<style>
+		html {
+			background: #272822;
+		}
+		body, html {
+			margin: 0;
+			height: 100%;
+		}
+	</style>
+</head>
+<body>
+	<div id="altContent">
+		<h1>CodeVis</h1>
+		<p><a href="http://www.adobe.com/go/getflashplayer">Get Adobe Flash player</a></p>
+	</div>
+</body>
+</html>
