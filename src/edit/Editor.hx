@@ -106,7 +106,7 @@ class Editor extends Sprite {
 		}
 	}
 	
-	public function addToken(token:Token) {
+	public function addToken(token:Token, steps:Array<StateNode.Step>) {
 		var min = token.pos.min;
 		var max = token.pos.max;
 		
@@ -115,13 +115,12 @@ class Editor extends Sprite {
 		
 		if (boundsMin == null || boundsMax == null) return;
 		
-		var tag:TokenTag = new TokenTag(token);
+		var tag:TokenTag = new TokenTag(token, steps);
 		tag.x = boundsMin.x;
 		tag.y = boundsMin.y-2;
 		tag.redraw(boundsMax.x-boundsMin.x, boundsMin.height+2);
 		tokenDisplay.addChild(tag);
 		tokenTags.push(tag);
-		
 	}
 	
 	function getCharBoundsAtPosition(pos:Int) {

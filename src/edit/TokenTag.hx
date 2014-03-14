@@ -19,9 +19,12 @@ class TokenTag extends Sprite {
 	
 	var token:Token;
 	var info:TextField;
+	var steps:Array<StateNode.Step>;
 	
-	public function new(token:Token) {
+	public function new(token:Token, steps:Array<StateNode.Step>) {
 		this.token = token;
+		this.steps = steps;
+		
 		super();
 		
 		addEventListener(MouseEvent.MOUSE_OVER, rollOver);
@@ -30,7 +33,7 @@ class TokenTag extends Sprite {
 	}
 	
 	function updateInfo() {
-		info.text = ""+token.tok;
+		info.text = steps.join("\n")+"\n"+""+token.tok;
 		info.y = -info.height;
 	}
 	
@@ -38,7 +41,7 @@ class TokenTag extends Sprite {
 		Mouse.cursor = MouseCursor.IBEAM;
 		removeInfo();
 		info = new TextField();
-		info.defaultTextFormat = new TextFormat("Arial");
+		info.defaultTextFormat = new TextFormat("_typewriter");
 		info.autoSize = TextFieldAutoSize.LEFT;
 		info.background = true;
 		updateInfo();

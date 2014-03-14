@@ -42,6 +42,8 @@ class Console extends Sprite implements ILogBinding {
 	
 	var overlay:Shape = new Shape();
 	
+	var valid = true;
+	
 	public var text(get, set):String;
 	
 	public function new() {
@@ -76,6 +78,7 @@ class Console extends Sprite implements ILogBinding {
 	/* INTERFACE com.furusystems.slf4hx.bindings.ILogBinding */
 	
 	public function print(owner:Dynamic, level:String, str:String):Void {
+		///*
 		var paragraph = new ParagraphElement();
 		paragraph.lineHeight = 14;
 		
@@ -85,6 +88,26 @@ class Console extends Sprite implements ILogBinding {
 		paragraph.addChild(span);
 		textflow.addChild(paragraph);
 		
+		//invalidate();
+		textflow.flowComposer.updateAllControllers();
+		container.verticalScrollPosition = Math.POSITIVE_INFINITY;
+		//*/
+		//var span = cast(cast(textflow.getChildAt(0), ParagraphElement).getChildAt(0), SpanElement);
+		//span.replaceText(span.textLength, span.textLength, "\n"+level+"  "+str);
+		//textflow.flowComposer.updateAllControllers();
+		//container.verticalScrollPosition = Math.POSITIVE_INFINITY;
+	}
+	
+	function invalidate() {
+		if (valid) {
+			valid = false;
+			addEventListener(Event.EXIT_FRAME, validate, false, 0, true);
+		}
+	}
+	
+	function validate(e:Event) {
+		valid = true;
+		removeEventListener(Event.EXIT_FRAME, validate);
 		textflow.flowComposer.updateAllControllers();
 		container.verticalScrollPosition = Math.POSITIVE_INFINITY;
 	}

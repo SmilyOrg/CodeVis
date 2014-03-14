@@ -18,6 +18,8 @@ import haxe.Timer;
 import haxeparser.Data.Token;
 import haxeparser.Data.TokenDef;
 import haxeparser.HaxeLexer;
+import hxparse.State;
+import hxparse.UnexpectedChar;
 
 using StringTools;
 
@@ -41,6 +43,9 @@ class CodeVis extends Sprite {
 	var lexer:HaxeLexer;
 	var current:Token;
 	var totalTokens:Int;
+	
+	var nodeMap:Map<State, StateNode>;
+	var steps:Array<StateNode.Step>;
 	
 	var consoleHeight:Float = 100;
 	//var consoleVisible:Bool = false;
@@ -66,6 +71,10 @@ class CodeVis extends Sprite {
 		
 		//toggleConsole();
 		//redrawConsoleBar();
+		
+		#if !expose_lexer_state
+			#error "Using this class requires -D expose_lexer_state"
+		#end
 		
 		addEventListener(Event.ADDED_TO_STAGE, addedToStage);
 		addEventListener(Event.RESIZE, stageResize);
@@ -143,8 +152,25 @@ class CodeVis extends Sprite {
 	}
 	
 	function updateLexer(source:String, fileName:String) {
+		if (lexer != null) {
+			lexer.stateCallback = null;
+		}
 		lexer = new HaxeLexer(ByteData.ofString(source), fileName);
+		lexer.stateCallback = stateCallback;
 	}
+	
+	function stateCallback(state:State, position:Int, input:Int) {
+		var node = StateNode.processGraphState(state, nodeMap);
+		
+		var step = new StateNode.Step();
+		step.state = state;
+		step.position = position;
+		step.input = input;
+		if (node != null && input > -1) step.transition = node.edgeByInput[input];
+		
+		steps.push(step);
+	}
+	
 	
 	function fileLoaded(data:String) {
 		data = data.replace("\r", "");
@@ -159,8 +185,11 @@ class CodeVis extends Sprite {
 	
 	function tokenizeStart() {
 		tokenizeStop();
+		
 		totalTokens = 0;
 		editor.clearTokens();
+		nodeMap = new Map<State, StateNode>();
+		
 		addEventListener(Event.ENTER_FRAME, tokenizeRun);
 	}
 	
@@ -176,11 +205,18 @@ class CodeVis extends Sprite {
 	}
 	
 	function nextToken():Bool {
-		current = lexer.token(HaxeLexer.tok);
+		steps = [];
+		try {
+			current = lexer.token(HaxeLexer.tok);
+		} catch(e:UnexpectedChar) {
+			L.error(e);
+			return true;
+		}
+		
 		var end = current == null || current.tok == TokenDef.Eof;
 		if (end) return true;
 		
-		editor.addToken(current);
+		editor.addToken(current, steps);
 		
 		return false;
 	}
