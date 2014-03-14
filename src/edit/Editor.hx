@@ -113,6 +113,8 @@ class Editor extends Sprite {
 		var boundsMin = getCharBoundsAtPosition(min);
 		var boundsMax = getCharBoundsAtPosition(max);
 		
+		if (boundsMin == null || boundsMax == null) return;
+		
 		var tag:TokenTag = new TokenTag(token);
 		tag.x = boundsMin.x;
 		tag.y = boundsMin.y-2;
@@ -124,6 +126,7 @@ class Editor extends Sprite {
 	
 	function getCharBoundsAtPosition(pos:Int) {
 		var flowLine = container.flowComposer.findLineAtPosition(pos);
+		if (flowLine == null) return null;
 		var line = flowLine.getTextLine(true);
 		//var lineBounds = line.getBounds(overlay);
 		var lineBounds = flowLine.getBounds();

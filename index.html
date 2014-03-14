@@ -5,7 +5,7 @@
 	<title>CodeVis</title>
 	<meta name="description" content="" />
 	
-	<script src="js/swfobject.js"></script>
+	<script src="bin/js/swfobject.js"></script>
 	<script>
 		var flashvars = {
 		};
@@ -21,23 +21,24 @@
 			id: "swfContent"
 		};
 		
+		var swf;
+		
 		function locationHashChanged() {
-			var el = document.getElementById(attributes.id);
-			el.locationHashChanged(location.hash);
+			swf.locationHashChanged(location.hash);
 		}
 		
 		function swfInit() {
+			swf = document.getElementById(attributes.id);
 			locationHashChanged();
 			window.addEventListener("hashchange", locationHashChanged);
 		}
 		
 		function resizeSWF(w, h) {
-			var el = document.getElementById(attributes.id);
-			el.setAttribute("width", w);
-			el.setAttribute("height", h);
+			swf.setAttribute("width", w);
+			swf.setAttribute("height", h);
 		}
 		
-		swfobject.embedSWF("CodeVis.swf", "altContent", "100%", "100%", "10.0.0", "expressInstall.swf", flashvars, params, attributes);
+		swfobject.embedSWF("bin/CodeVis.swf", "altContent", "100%", "100%", "10.0.0", "bin/expressInstall.swf", flashvars, params, attributes);
 		
 	</script>
 	<style>

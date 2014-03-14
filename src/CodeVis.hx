@@ -14,9 +14,12 @@ import flash.events.UncaughtErrorEvent;
 import flash.external.ExternalInterface;
 import flash.Lib;
 import haxe.Http;
+import haxe.Timer;
 import haxeparser.Data.Token;
 import haxeparser.Data.TokenDef;
 import haxeparser.HaxeLexer;
+
+using StringTools;
 
 class CodeVis extends Sprite {
 	
@@ -68,6 +71,7 @@ class CodeVis extends Sprite {
 		addEventListener(Event.RESIZE, stageResize);
 		
 		if (ExternalInterface.available) {
+			defaultPath = "bin/" + defaultPath;
 			ExternalInterface.addCallback("locationHashChanged", locationHashChanged);
 			ExternalInterface.call("swfInit");
 		} else {
@@ -77,11 +81,12 @@ class CodeVis extends Sprite {
 	}
 	
 	function addedToStage(e:Event) {
+		loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, uncaughtError);
+		
 		var file = loaderInfo.parameters.file;
 		if (file != null) {
 			L.info("Loading file", file);
 		}
-		stage.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, uncaughtError);
 		stageResize();
 	}
 	
@@ -103,6 +108,10 @@ class CodeVis extends Sprite {
 	//}
 	
 	function locationHashChanged(hash:String) {
+		if (hash == "") {
+			filePath = defaultPath;
+			loadPath();
+		}
 		
 		if (hash.charAt(0) != "#") return;
 		
@@ -138,6 +147,8 @@ class CodeVis extends Sprite {
 	}
 	
 	function fileLoaded(data:String) {
+		data = data.replace("\r", "");
+		
 		editor.text = data;
 		resizeToContent();
 		
