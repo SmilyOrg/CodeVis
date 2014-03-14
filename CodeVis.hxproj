@@ -5,7 +5,7 @@
     <movie outputType="Application" />
     <movie input="" />
     <movie path="bin\CodeVis.swf" />
-    <movie fps="30" />
+    <movie fps="60" />
     <movie width="800" />
     <movie height="600" />
     <movie version="11" />
@@ -19,7 +19,7 @@
   </classpaths>
   <!-- Build options -->
   <build>
-    <option directives="" />
+    <option directives="expose_lexer_state" />
     <option flashStrict="False" />
     <option noInlineOnDebug="False" />
     <option mainClass="CodeVis" />
