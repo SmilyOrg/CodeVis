@@ -40,7 +40,9 @@ class CodeVis extends Sprite {
 	
 	var console:Console;
 	var editor:Editor;
+	
 	var lexer:HaxeLexer;
+	var tokenizationStart:Int;
 	var current:Token;
 	var totalTokens:Int;
 	
@@ -75,6 +77,12 @@ class CodeVis extends Sprite {
 		#if !expose_lexer_state
 			#error "Using this class requires -D expose_lexer_state"
 		#end
+		
+		//L.debug("debug");
+		//L.info("info");
+		//L.warn("warn");
+		//L.error("error");
+		//L.fatal("fatal");
 		
 		addEventListener(Event.ADDED_TO_STAGE, addedToStage);
 		addEventListener(Event.RESIZE, stageResize);
@@ -186,18 +194,26 @@ class CodeVis extends Sprite {
 	function tokenizeStart() {
 		tokenizeStop();
 		
+		tokenizationStart = Lib.getTimer();
 		totalTokens = 0;
 		editor.clearTokens();
 		nodeMap = new Map<State, StateNode>();
 		
 		addEventListener(Event.ENTER_FRAME, tokenizeRun);
+		//nextToken();
+		//nextToken();
+		//nextToken();
+		//nextToken();
 	}
 	
 	function tokenizeRun(e:Event) {
 		var start = Lib.getTimer();
 		var end = false;
 		while (Lib.getTimer()-start < 10) {
+			//var before = Lib.getTimer();
 			end = nextToken();
+			//var after = Lib.getTimer();
+			//L.info(after-before+"ms");
 			totalTokens++;
 			if (end) break;
 		}
@@ -211,6 +227,9 @@ class CodeVis extends Sprite {
 		} catch(e:UnexpectedChar) {
 			L.error(e);
 			return true;
+		} catch(e:LexerError) {
+			L.error(e.msg);
+			return true;
 		}
 		
 		var end = current == null || current.tok == TokenDef.Eof;
@@ -223,8 +242,9 @@ class CodeVis extends Sprite {
 	
 	function tokenizeStop() {
 		if (!hasEventListener(Event.ENTER_FRAME)) return;
-		L.info("Tokens lexed:", totalTokens);
+		L.info('Lexed $totalTokens in ${Lib.getTimer()-tokenizationStart}ms');
 		removeEventListener(Event.ENTER_FRAME, tokenizeRun);
+		editor.updateFlow();
 	}
 	
 	function resizeToContent() {

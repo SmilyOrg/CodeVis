@@ -1,6 +1,7 @@
 package ;
 
 import com.furusystems.slf4hx.bindings.ILogBinding;
+import com.furusystems.slf4hx.constants.Levels;
 import flash.display.BlendMode;
 import flash.display.Graphics;
 import flash.display.Shape;
@@ -28,6 +29,8 @@ import flashx.textLayout.formats.LineBreak;
 import flashx.textLayout.formats.TabStopFormat;
 import flashx.textLayout.formats.TextLayoutFormat;
 import flashx.undo.UndoManager;
+
+using StringTools;
 
 class Console extends Sprite implements ILogBinding {
 
@@ -80,10 +83,18 @@ class Console extends Sprite implements ILogBinding {
 	public function print(owner:Dynamic, level:String, str:String):Void {
 		///*
 		var paragraph = new ParagraphElement();
+		var id = Levels.getID(level);
+		paragraph.color = switch (id) {
+			case Levels.DEBUG: 0xC9C9C9;
+			case Levels.WARN: 0xEFEA0A;
+			case _ if (id >= Levels.FATAL): 0xE018DB;
+			case _ if (id >= Levels.ERROR): 0xF15C61;
+			default: 0xF4F4F4;
+		}
 		paragraph.lineHeight = 14;
 		
 		var span = new SpanElement();
-		span.replaceText(0, 0, level+"  "+str);
+		span.replaceText(0, 0, level.rpad(" ", 7)+str);
 		
 		paragraph.addChild(span);
 		textflow.addChild(paragraph);

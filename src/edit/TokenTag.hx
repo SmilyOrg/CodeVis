@@ -68,7 +68,9 @@ class TokenTag extends Sprite {
 	public function redraw(w:Float, h:Float) {
 		var g:Graphics = graphics;
 		g.clear();
-		g.beginFill(0xFFFFFF, 0.2);
+		//g.beginFill(0xFFFFFF, 0.2);
+		g.beginFill(0xFFFFFF, 0);
+		g.lineStyle(1, 0xFFFFFF, 0.2);
 		g.drawRoundRect(0, 0, w, h, 8, 8);
 	}
 	
