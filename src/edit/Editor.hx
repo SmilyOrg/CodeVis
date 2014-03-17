@@ -20,9 +20,11 @@ import flash.ui.Keyboard;
 import flash.utils.Object;
 import flashx.textLayout.compose.TextFlowLine;
 import flashx.textLayout.container.ContainerController;
+import flashx.textLayout.container.TextContainerManager;
 import flashx.textLayout.conversion.ConverterBase;
 import flashx.textLayout.conversion.ITextImporter;
 import flashx.textLayout.conversion.TextConverter;
+import flashx.textLayout.edit.EditingMode;
 import flashx.textLayout.edit.EditManager;
 import flashx.textLayout.edit.IEditManager;
 import flashx.textLayout.edit.SelectionFormat;
@@ -34,6 +36,7 @@ import flashx.textLayout.elements.ParagraphElement;
 import flashx.textLayout.elements.SpanElement;
 import flashx.textLayout.elements.TextFlow;
 import flashx.textLayout.events.FlowOperationEvent;
+import flashx.textLayout.events.SelectionEvent;
 import flashx.textLayout.formats.LineBreak;
 import flashx.textLayout.formats.TabStopFormat;
 import flashx.textLayout.formats.TextLayoutFormat;
@@ -111,6 +114,8 @@ class Editor extends Sprite {
 	
 	var valid:Bool = true;
 	
+	var tooltip:TextContainerManager;
+	
 	public var text(get, set):String;
 	
 	public function new() {
@@ -151,6 +156,7 @@ class Editor extends Sprite {
 		addChild(tokenDisplay);
 		
 		initTextFlow();
+		initTooltip();
 		
 		text = "";
 		
@@ -185,6 +191,28 @@ class Editor extends Sprite {
 		textflow.flowComposer.addController(container);
 		textflow.flowComposer.updateAllControllers();
 		textflow.addEventListener(FlowOperationEvent.FLOW_OPERATION_COMPLETE, textChanged);
+		textflow.addEventListener(SelectionEvent.SELECTION_CHANGE, selectionChange);
+	}
+	
+	function initTooltip() {
+		var con = new Sprite();
+		
+		var config = TextContainerManager.defaultConfiguration.clone();
+		var format = new TextLayoutFormat();
+		format.fontFamily = "Inconsolata";
+		format.fontSize = 14;
+		format.fontLookup = FontLookup.EMBEDDED_CFF;
+		format.lineBreak = LineBreak.EXPLICIT;
+		format.color = 0xF8F8F2;
+		config.textFlowInitialFormat = format;
+		
+		var tcm = new TextContainerManager(con, config);
+		tcm.editingMode = EditingMode.READ_ONLY;
+		tooltip = tcm;
+		
+		con.visible = false;
+		con.mouseEnabled = con.mouseChildren = false;
+		addChild(con);
 	}
 	
 	
@@ -223,6 +251,7 @@ class Editor extends Sprite {
 		var boundsMax = getCharBoundsAtPosition(max);
 		
 		if (boundsMin == null || boundsMax == null) return;
+		//L.debug("bounds", Stopwatch.tock());
 		
 		var tag:TokenTag = new TokenTag(token, steps);
 		tag.x = boundsMin.x;
@@ -231,10 +260,10 @@ class Editor extends Sprite {
 		tokenDisplay.addChild(tag);
 		tokenTags.push(tag);
 		//*/
+		//L.debug("tag", Stopwatch.tock());
 		
+		/*
 		var paragraph:ParagraphElement = cast textflow.getChildAt(0);
-		
-		//L.debug(min, max, textflow.getChildAt(0) == paragraph, text.length);
 		
 		var spanIndex = paragraph.findChildIndexAtPosition(min);
 		var span:SpanElement = cast paragraph.getChildAt(spanIndex);
@@ -249,7 +278,6 @@ class Editor extends Sprite {
 		}
 		
 		// Merge sibling spans until the current span is long enough
-		///*
 		var spanLen = span.textLength;
 		while (rmax > spanLen) {
 			var next = span.getNextSibling();
@@ -258,68 +286,22 @@ class Editor extends Sprite {
 			paragraph.removeChild(next);
 			spanLen = span.textLength;
 		}
-		//*/
-		
 		
 		var tokenSpan = span.shallowCopy(rmin, rmax);
 		
-		tokenSpan.color = switch(token.tok) {
-			
-			case Kwd(KwdImport),
-			     Kwd(KwdClass),
-				 Kwd(KwdEnum),
-				 Kwd(KwdAbstract),
-				 Kwd(KwdTypedef),
-				 Kwd(KwdPackage): 0x66D9EF;
-				 
-			case Kwd(_),
-			     Const(CIdent("trace")): 0xF92772;
-				 
-			case Const(CIdent(ident)):
-				var c = ident.charAt(0);
-				(c.toUpperCase() == c) ? 0xFF9901 : 0xF8F8F2;
-				
-			case Const(CString(_)): 0xE6DB74;
-			
-			case Const(CInt(_)),
-			     Const(CFloat(_)): 0x777777;
-				 
-			case Const(_): 0xF8F8F2;
-			
-			case CommentLine(_),
-			     Comment(_): 0x75715E;
-				 
-			case Sharp(_): 0xA6E22A;
-			
-			default: 0xF8F8F2;
-		}
+		tokenSpan.color = 
 		
-		//L.debug(0, rmax, span.textLength, span.getText());
 		span.replaceText(0, rmax, "");
 		paragraph.addChildAt(spanIndex, tokenSpan);
 		
-		//textflow.flowComposer.updateAllControllers();
-		
 		invalidate();
+		*/
 		
 		//textflow.flowComposer.updateAllControllers();
+		
 		//textflow.flowComposer.composeToPosition(max);
 		
 		//L.info(spanIndex, spanStart, min, max, tokenSpan.getText());
-		
-		/*
-		code { color: #F8F8F2; }
-		code .identifier { color:#F8F8F2; }
-		code .type { color:#FF9901; }
-		code .keyword { color:#F92772; }
-		code .directive { color:#66D9EF; }
-		code .constant { color:#AE81FF; }
-		code .comment { color:#75715E; }
-		code .string { color:#E6DB74; }
-		code .macro { color:#A6E22A; }
-		code .inactive { color:#75715E; }
-		code .num { color:#777777; }
-		*/
 		
 		//var tokenFormat = new TextLayoutFormat(format);
 		//tokenFormat.color = 0xFF0000;
@@ -347,7 +329,9 @@ class Editor extends Sprite {
 	}
 
 	function getCharBoundsAtPosition(pos:Int) {
-		container.flowComposer.composeToPosition(pos);
+		Stopwatch.tick("compose");
+		//container.flowComposer.composeToPosition(pos);
+		//L.debug("compose", Stopwatch.tock("compose"));
 		var flowLine = container.flowComposer.findLineAtPosition(pos);
 		if (flowLine == null) return null;
 		var line = flowLine.getTextLine(true);
@@ -400,8 +384,33 @@ class Editor extends Sprite {
 		return v;
 	}
 	
+	public function showTooltip(pos:Int, msg:String) {
+		var con = tooltip.container;
+		var g = con.graphics;
+		g.clear();
+		
+		tooltip.setText(msg);
+		tooltip.compositionWidth = Math.NaN;
+		tooltip.compositionHeight = Math.NaN;
+		tooltip.updateContainer();
+		
+		var bounds = getCharBoundsAtPosition(pos);
+		var tooltipBounds = tooltip.getContentBounds();
+		
+		g.beginFill(0x272822, 0.7);
+		g.drawRoundRect(-6, -6, tooltipBounds.width+12, tooltipBounds.height+12, 12, 12);
+		
+		con.visible = true;
+		con.x = bounds.x;
+		con.y = bounds.y-tooltipBounds.height-8;
+	}
+	
 	private function textChanged(e:FlowOperationEvent) {
 		dispatchEvent(new Event(Event.CHANGE));
+	}
+	
+	private function selectionChange(e:SelectionEvent) {
+		dispatchEvent(e);
 	}
 	
 	public function resize(w:Float, h:Float) {

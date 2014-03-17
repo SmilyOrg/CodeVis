@@ -67,10 +67,19 @@ class StateNode {
 			e.label = getRangeString(e.inputs);
 			e.source = node;
 			e.drain = processGraphState(target, nodeMap);
+			e.drain.parent = node;
 			node.targets.push(e);
 		}
 		
+		node.targets.sort(sortEdges);
+		
 		return node;
+	}
+	
+	static function sortEdges(a:Edge, b:Edge):Int {
+		if (a.label < b.label) return -1;
+		if (a.label > b.label) return 1;
+		return 0;
 	}
 	
 	static function getRangeString(inputs:Array<Int>) {
@@ -143,6 +152,8 @@ class StateNode {
 	}
 	
 	public var state:State;
+	
+	public var parent:StateNode = null;
 	
 	public var targets:Array<Edge>;
 	public var edgeByInput:Vector<Edge>;
