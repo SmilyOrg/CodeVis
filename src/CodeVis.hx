@@ -4,17 +4,18 @@ import byte.ByteData;
 import com.furusystems.slf4hx.loggers.Logger;
 import com.furusystems.slf4hx.Logging;
 import edit.Editor;
-import flash.display.Graphics;
+import flash.display.Shape;
 import flash.display.Sprite;
 import flash.display.StageAlign;
 import flash.display.StageScaleMode;
 import flash.events.Event;
-import flash.events.MouseEvent;
+import flash.events.TimerEvent;
 import flash.events.UncaughtErrorEvent;
 import flash.external.ExternalInterface;
 import flash.Lib;
+import flash.utils.Timer;
+import flashx.textLayout.events.SelectionEvent;
 import haxe.Http;
-import haxe.Timer;
 import haxeparser.Data.Token;
 import haxeparser.Data.TokenDef;
 import haxeparser.HaxeLexer;
@@ -40,14 +41,27 @@ class CodeVis extends Sprite {
 	
 	var console:Console;
 	var editor:Editor;
+	
+	var nodeVis:NodeVis;
+	
+	var progressBar:Shape;
+	var progressBarProgress:Float = 0;
+	
+	var source:String;
+	var sourceName:String;
 	var lexer:HaxeLexer;
+	var tokenizationStart:Int;
 	var current:Token;
 	var totalTokens:Int;
 	
 	var nodeMap:Map<State, StateNode>;
 	var steps:Array<StateNode.Step>;
+	var posMap:Map<Int, Array<StateNode.Step>>;
 	
 	var consoleHeight:Float = 100;
+	
+	var delayedUpdate:Timer;
+	
 	//var consoleVisible:Bool = false;
 	//var consoleBar:Sprite;
 	
@@ -59,10 +73,19 @@ class CodeVis extends Sprite {
 		
 		Logging.logBinding = console;
 		
+		progressBar = new Shape();
+		progressBar.y = consoleHeight;
+		addChild(progressBar);
+		
 		editor = new Editor();
-		editor.y = consoleHeight;
+		editor.y = consoleHeight+1;
 		editor.addEventListener(Event.CHANGE, editorChange);
+		editor.addEventListener(SelectionEvent.SELECTION_CHANGE, selectionChange);
 		addChild(editor);
+		
+		nodeVis = new NodeVis();
+		nodeVis.y = 20;
+		addChild(nodeVis);
 		
 		//consoleBar = new Sprite();
 		//consoleBar.buttonMode = true;
@@ -76,8 +99,17 @@ class CodeVis extends Sprite {
 			#error "Using this class requires -D expose_lexer_state"
 		#end
 		
+		delayedUpdate = new Timer(400, 1);
+		delayedUpdate.addEventListener(TimerEvent.TIMER, update);
+
+		
+		//L.debug("debug");
+		//L.info("info");
+		//L.warn("warn");
+		//L.error("error");
+		//L.fatal("fatal");
+		
 		addEventListener(Event.ADDED_TO_STAGE, addedToStage);
-		addEventListener(Event.RESIZE, stageResize);
 		
 		if (ExternalInterface.available) {
 			defaultPath = "bin/" + defaultPath;
@@ -96,6 +128,7 @@ class CodeVis extends Sprite {
 		if (file != null) {
 			L.info("Loading file", file);
 		}
+		stage.addEventListener(Event.RESIZE, stageResize);
 		stageResize();
 	}
 	
@@ -146,9 +179,19 @@ class CodeVis extends Sprite {
 	}
 	
 	function editorChange(e:Event) {
-		updateLexer(editor.text, "<editor>");
+		//updateLexer(editor.text, "<editor>");
+		//tokenizeStart();
+		//resizeToContent();
+		tokenizeStop();
+		delayedUpdate.reset();
+		delayedUpdate.start();
+	}
+	
+	function updateSource(source:String, sourceName:String) {
+		this.source = source;
+		this.sourceName = sourceName;
+		updateLexer(source, sourceName);
 		tokenizeStart();
-		resizeToContent();
 	}
 	
 	function updateLexer(source:String, fileName:String) {
@@ -169,6 +212,9 @@ class CodeVis extends Sprite {
 		if (node != null && input > -1) step.transition = node.edgeByInput[input];
 		
 		steps.push(step);
+		var ps = posMap[position];
+		if (ps == null) posMap[position] = ps = new Array<StateNode.Step>();
+		ps.push(step);
 	}
 	
 	
@@ -178,26 +224,35 @@ class CodeVis extends Sprite {
 		editor.text = data;
 		resizeToContent();
 		
-		updateLexer(data, filePath);
-		tokenizeStart();
+		updateSource(data, filePath);
 	}
 	
 	
 	function tokenizeStart() {
 		tokenizeStop();
+		nodeVis.clear();
 		
+		tokenizationStart = Lib.getTimer();
 		totalTokens = 0;
 		editor.clearTokens();
 		nodeMap = new Map<State, StateNode>();
+		posMap = new Map<Int, Array<StateNode.Step>>();
 		
 		addEventListener(Event.ENTER_FRAME, tokenizeRun);
+		//nextToken();
+		//nextToken();
+		//nextToken();
+		//nextToken();
 	}
 	
 	function tokenizeRun(e:Event) {
 		var start = Lib.getTimer();
 		var end = false;
 		while (Lib.getTimer()-start < 10) {
+			//var before = Lib.getTimer();
 			end = nextToken();
+			//var after = Lib.getTimer();
+			//L.info(after-before+"ms");
 			totalTokens++;
 			if (end) break;
 		}
@@ -211,7 +266,12 @@ class CodeVis extends Sprite {
 		} catch(e:UnexpectedChar) {
 			L.error(e);
 			return true;
+		} catch(e:LexerError) {
+			L.error(e.msg);
+			return true;
 		}
+		
+		updateProgress();
 		
 		var end = current == null || current.tok == TokenDef.Eof;
 		if (end) return true;
@@ -221,19 +281,83 @@ class CodeVis extends Sprite {
 		return false;
 	}
 	
+	function updateProgress() {
+		progressBarProgress = current == null ? 1 : current.pos.max/source.length;
+		updateProgressBar();
+	}
+	
+	function updateProgressBar() {
+		var g = progressBar.graphics;
+		g.clear();
+		g.lineStyle(1, 0xFDDBAC, 0.3);
+		g.moveTo(0, 0);
+		g.lineTo(progressBarProgress*stage.stageWidth, 0);
+	}
+	
 	function tokenizeStop() {
 		if (!hasEventListener(Event.ENTER_FRAME)) return;
-		L.info("Tokens lexed:", totalTokens);
+		L.info('Lexed $totalTokens tokens in ${Lib.getTimer()-tokenizationStart}ms');
 		removeEventListener(Event.ENTER_FRAME, tokenizeRun);
+		editor.updateFlow();
+		visualizeNodes();
+		//delayedUpdate.reset();
+		//delayedUpdate.start();
+	}
+	
+	function selectionChange(e:SelectionEvent) {
+		var s = e.selectionState;
+		//var pos = s.anchorPosition;
+		var acc = new Array<StateNode.Step>();
+		var limit = 50;
+		var end = s.absoluteEnd+1;
+		var trim = end-s.absoluteStart > limit;
+		end = trim ? s.absoluteStart+limit : end;
+		for (pos in s.absoluteStart...end) {
+			var ps = posMap[pos];
+			if (ps != null) acc = acc.concat(ps);
+		}
+		nodeVis.clearSelection();
+		for (node in acc) {
+			nodeVis.select(nodeMap[node.state]);
+		}
+		editor.showTooltip(s.activePosition, acc.join("\n") + (trim ? "\n..." : ""));
+	}
+	
+	function visualizeNodes() {
+		
+		var keys = nodeMap.keys();
+		if (!keys.hasNext()) return;
+		var node = nodeMap[keys.next()];
+		
+		var root = node;
+		while (root.parent != null) root = root.parent;
+		
+		//L.debug("root", root.targets.join("\n"));
+		
+		nodeVis.visualize(root);
+		
+		updateNodeVis();
+	}
+	
+	function update(e:Event) {
+		resizeToContent();
+		updateSource(editor.text, "<editor>");
+	}
+	
+	function updateNodeVis() {
+		var bounds = nodeVis.getBounds(nodeVis);
+		nodeVis.x = stage.stageWidth-bounds.right;
 	}
 	
 	function resizeToContent() {
-		if (ExternalInterface.available) ExternalInterface.call("resizeSWF", width, height);
+		if (ExternalInterface.available) ExternalInterface.call("resizeSWF", stage.stageWidth, height);
 	}
 	
 	function stageResize(e:Event = null) {
 		//redrawConsoleBar();
 		console.resize(stage.stageWidth, consoleHeight);
+		updateProgressBar();
+		updateNodeVis();
 	}
 	
 }
