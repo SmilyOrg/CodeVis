@@ -114,7 +114,7 @@ class Editor extends Sprite {
 	
 	var valid:Bool = true;
 	
-	var tooltip:TextContainerManager;
+	var tooltip:Tooltip;
 	
 	public var text(get, set):String;
 	
@@ -152,8 +152,8 @@ class Editor extends Sprite {
 		addChild(textDisplay);
 		addChild(overlay);
 		
-		tokenDisplay.addEventListener(MouseEvent.MOUSE_DOWN, tokenMouseDown, true);
-		addChild(tokenDisplay);
+		//tokenDisplay.addEventListener(MouseEvent.MOUSE_DOWN, tokenMouseDown, true);
+		textDisplay.addChild(tokenDisplay);
 		
 		initTextFlow();
 		initTooltip();
@@ -195,24 +195,9 @@ class Editor extends Sprite {
 	}
 	
 	function initTooltip() {
-		var con = new Sprite();
-		
-		var config = TextContainerManager.defaultConfiguration.clone();
-		var format = new TextLayoutFormat();
-		format.fontFamily = "Inconsolata";
-		format.fontSize = 14;
-		format.fontLookup = FontLookup.EMBEDDED_CFF;
-		format.lineBreak = LineBreak.EXPLICIT;
-		format.color = 0xF8F8F2;
-		config.textFlowInitialFormat = format;
-		
-		var tcm = new TextContainerManager(con, config);
-		tcm.editingMode = EditingMode.READ_ONLY;
-		tooltip = tcm;
-		
-		con.visible = false;
-		con.mouseEnabled = con.mouseChildren = false;
-		addChild(con);
+		tooltip = new Tooltip();
+		tooltip.visible = false;
+		textDisplay.addChild(tooltip);
 	}
 	
 	
@@ -228,10 +213,10 @@ class Editor extends Sprite {
 	}
 	
 	public function tokenMouseDown(e:MouseEvent) {
-		var p = textDisplay.globalToLocal(e.target.localToGlobal(new Point(e.localX, e.localY)));
-		e.localX = p.x;
-		e.localY = p.y;
-		textDisplay.dispatchEvent(e);
+		//var p = textDisplay.globalToLocal(e.target.localToGlobal(new Point(e.localX, e.localY)));
+		//e.localX = p.x;
+		//e.localY = p.y;
+		//textDisplay.dispatchEvent(e);
 	}
 	
 	public function clearTokens() {
@@ -310,6 +295,11 @@ class Editor extends Sprite {
 		
 	}
 	
+	function updateText() {
+		textflow.flowComposer.updateAllControllers();
+		textDisplay.addChild(tokenDisplay);
+	}
+	
 	function invalidate() {
 		if (valid) {
 			valid = false;
@@ -320,21 +310,25 @@ class Editor extends Sprite {
 	function validate(e:Event) {
 		valid = true;
 		removeEventListener(Event.EXIT_FRAME, validate);
-		textflow.flowComposer.updateAllControllers();
+		updateText();
 		container.verticalScrollPosition = Math.POSITIVE_INFINITY;
 	}
 	
 	public function updateFlow() {
-		textflow.flowComposer.updateAllControllers();
+		updateText();
 	}
 
 	function getCharBoundsAtPosition(pos:Int) {
-		Stopwatch.tick("compose");
+		//Stopwatch.tick("compose");
 		//container.flowComposer.composeToPosition(pos);
 		//L.debug("compose", Stopwatch.tock("compose"));
 		var flowLine = container.flowComposer.findLineAtPosition(pos);
 		if (flowLine == null) return null;
 		var line = flowLine.getTextLine(true);
+		if (line == null) {
+			container.flowComposer.composeToPosition(pos);
+			return getCharBoundsAtPosition(pos);
+		}
 		//var lineBounds = line.getBounds(overlay);
 		var lineBounds = flowLine.getBounds();
 		var atomIndex = line.getAtomIndexAtCharIndex(pos);
@@ -380,29 +374,21 @@ class Editor extends Sprite {
 		
 		paragraph.replaceChildren(0, paragraph.numChildren-1, span);
 		
-		textflow.flowComposer.updateAllControllers();
+		updateText();
 		return v;
 	}
 	
+	public function hideTooltip() {
+		tooltip.visible = false;
+	}
+	
 	public function showTooltip(pos:Int, msg:String) {
-		var con = tooltip.container;
-		var g = con.graphics;
-		g.clear();
-		
-		tooltip.setText(msg);
-		tooltip.compositionWidth = Math.NaN;
-		tooltip.compositionHeight = Math.NaN;
-		tooltip.updateContainer();
+		tooltip.visible = true;
+		tooltip.text = msg;
 		
 		var bounds = getCharBoundsAtPosition(pos);
-		var tooltipBounds = tooltip.getContentBounds();
-		
-		g.beginFill(0x272822, 0.7);
-		g.drawRoundRect(-6, -6, tooltipBounds.width+12, tooltipBounds.height+12, 12, 12);
-		
-		con.visible = true;
-		con.x = bounds.x;
-		con.y = bounds.y-tooltipBounds.height-8;
+		tooltip.x = bounds.x;
+		tooltip.y = bounds.y-tooltip.height-8;
 	}
 	
 	private function textChanged(e:FlowOperationEvent) {
@@ -415,7 +401,7 @@ class Editor extends Sprite {
 	
 	public function resize(w:Float, h:Float) {
 		container.setCompositionSize(w, h);
-		textflow.flowComposer.updateAllControllers();
+		updateText();
 	}
 	
 	
