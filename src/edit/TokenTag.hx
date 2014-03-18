@@ -6,11 +6,16 @@ import flash.display.Graphics;
 import flash.display.Sprite;
 import flash.events.EventPhase;
 import flash.events.MouseEvent;
+import flash.text.engine.FontLookup;
 import flash.text.TextField;
 import flash.text.TextFieldAutoSize;
 import flash.text.TextFormat;
 import flash.ui.Mouse;
 import flash.ui.MouseCursor;
+import flashx.textLayout.container.TextContainerManager;
+import flashx.textLayout.edit.EditingMode;
+import flashx.textLayout.formats.LineBreak;
+import flashx.textLayout.formats.TextLayoutFormat;
 import haxeparser.Data.Token;
 
 class TokenTag extends Sprite {
@@ -18,7 +23,8 @@ class TokenTag extends Sprite {
 	private static var L:Logger = Logging.getLogger(TokenTag);
 	
 	var token:Token;
-	var info:TextField;
+	//var info:TextField;
+	var tooltip:Tooltip;
 	var steps:Array<StateNode.Step>;
 	
 	public function new(token:Token, steps:Array<StateNode.Step>) {
@@ -33,30 +39,50 @@ class TokenTag extends Sprite {
 	}
 	
 	function updateInfo() {
-		info.text = steps.join("\n")+"\n"+""+token.tok;
-		info.y = -info.height;
+		//info.text = steps.join("\n")+"\n"+""+token.tok;
+		//info.y = -info.height;
+		tooltip.text = (steps.join("\n")+"\n"+""+token.tok);
+		tooltip.y = -tooltip.height;
 	}
 	
 	function rollOver(e:MouseEvent) {
 		Mouse.cursor = MouseCursor.IBEAM;
 		removeInfo();
+		/*
 		info = new TextField();
 		info.defaultTextFormat = new TextFormat("_typewriter");
 		info.autoSize = TextFieldAutoSize.LEFT;
 		info.background = true;
+		//addChild(info);
+		*/
+		
+		initInfo();
 		updateInfo();
-		addChild(info);
+		
+		e.stopPropagation();
+		e.stopImmediatePropagation();
 	}
 	function rollOut(e:MouseEvent) {
 		Mouse.cursor = MouseCursor.AUTO;
 		removeInfo();
+		e.stopPropagation();
+		e.stopImmediatePropagation();
+	}
+	
+	function initInfo() {
+		tooltip = new Tooltip();
+		addChild(tooltip);
 	}
 	
 	function removeInfo() {
-		if (info != null) {
-			removeChild(info);
-			info = null;
+		if (tooltip != null) {
+			removeChild(tooltip);
+			tooltip = null;
 		}
+		//if (info != null) {
+			//removeChild(info);
+			//info = null;
+		//}
 	}
 	
 	public function destroy() {

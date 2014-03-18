@@ -2,19 +2,15 @@ package ;
 import com.furusystems.slf4hx.loggers.Logger;
 import com.furusystems.slf4hx.Logging;
 import flash.display.Sprite;
-import flash.events.Event;
 import flash.events.MouseEvent;
 import flash.geom.Point;
 import flash.text.engine.FontLookup;
-import flash.text.TextField;
-import flash.text.TextFieldAutoSize;
-import flash.text.TextFormat;
+import flash.ui.Mouse;
 import flashx.textLayout.container.TextContainerManager;
 import flashx.textLayout.edit.EditingMode;
 import flashx.textLayout.elements.Configuration;
 import flashx.textLayout.formats.LineBreak;
 import flashx.textLayout.formats.TextLayoutFormat;
-import hxparse.State;
 import motion.Actuate;
 
 using StringTools;
@@ -34,7 +30,9 @@ class DisplayNode extends Sprite {
 		this.node = node;
 		super();
 		redraw();
-		addEventListener(MouseEvent.MOUSE_OVER, rollOver);
+		//addEventListener(MouseEvent.MOUSE_OVER, rollOver);
+		buttonMode = true;
+		//addEventListener(MouseEvent.MOUSE_DOWN, mouseDown);
 	}
 	public function select() {
 		redraw(0xFFCC00);
@@ -45,7 +43,7 @@ class DisplayNode extends Sprite {
 		redraw();
 	}
 	public function destroy() {
-		removeEventListener(MouseEvent.MOUSE_OVER, rollOver);
+		//removeEventListener(MouseEvent.MOUSE_OVER, rollOver);
 		node = null;
 	}
 	function redraw(color:Int = 0xFFFFFF) {
@@ -59,9 +57,17 @@ class DisplayNode extends Sprite {
 			g.drawCircle(0, 0, 5);
 		}
 	}
-	function rollOver(e:Event) {
+	//function rollOver(e:Event) {
 		//L.debug(node, contentWidth);
-	}
+	//}
+	//function mouseDown(e:MouseEvent) {
+		//stage.addEventListener(MouseEvent.MOUSE_UP, mouseUp);
+		//startDrag();
+	//}
+	//function mouseUp(e:MouseEvent) {
+		//stage.removeEventListener(MouseEvent.MOUSE_UP, mouseUp);
+		//stopDrag();
+	//}
 }
 
 class NodeVis extends Sprite {
@@ -73,10 +79,15 @@ class NodeVis extends Sprite {
 	
 	var labelConfig:Configuration;
 	
+	var node:StateNode;
+	
 	var displayMap:Map<StateNode, DisplayNode>;
 	var nodes = new Array<DisplayNode>();
 	var selected = new Array<DisplayNode>();
-	var labels = new Array<Sprite>();
+	var edgeLabels = new Map<StateNode.Edge, Sprite>();
+	
+	var drag:DisplayNode;
+	var dragOffset:Point = new Point();
 	
 	public function new() {
 		super();
@@ -93,8 +104,32 @@ class NodeVis extends Sprite {
 		format.backgroundAlpha = 1;
 		labelConfig.textFlowInitialFormat = format;
 		
-		mouseEnabled = mouseChildren = false;
+		addEventListener(MouseEvent.MOUSE_DOWN, mouseDown);
 		
+		//mouseEnabled = mouseChildren = false;
+		
+	}
+	
+	function mouseDown(e:MouseEvent) {
+		if (Type.getClass(e.target) != DisplayNode) return;
+		stage.addEventListener(MouseEvent.MOUSE_UP, mouseUp);
+		stage.addEventListener(MouseEvent.MOUSE_MOVE, mouseMove);
+		drag = cast e.target;
+		dragOffset.x = drag.mouseX;
+		dragOffset.y = drag.mouseY;
+		Mouse.hide();
+	}
+	function mouseMove(e:MouseEvent) {
+		drag.x = mouseX-dragOffset.x;
+		drag.y = mouseY-dragOffset.y;
+		drawEdges(node, displayMap);
+		e.updateAfterEvent();
+	}
+	function mouseUp(e:MouseEvent) {
+		mouseMove(e);
+		stage.removeEventListener(MouseEvent.MOUSE_UP, mouseUp);
+		stage.removeEventListener(MouseEvent.MOUSE_MOVE, mouseMove);
+		Mouse.show();
 	}
 	
 	public function clear() {
@@ -107,9 +142,13 @@ class NodeVis extends Sprite {
 			removeChild(node);
 		}
 		var label;
-		while ((label = labels.pop()) != null) {
-			removeChild(label);
+		//while ((label = edgeLabels.pop()) != null) {
+			//removeChild(label);
+		//}
+		for (con in edgeLabels) {
+			removeChild(con);
 		}
+		edgeLabels = new Map<StateNode.Edge, Sprite>();
 	}
 	
 	public function clearSelection() {
@@ -128,6 +167,8 @@ class NodeVis extends Sprite {
 	}
 	
 	public function visualize(node:StateNode) {
+		this.node = node;
+		
 		clear();
 		
 		var g = graphics;
@@ -136,6 +177,7 @@ class NodeVis extends Sprite {
 		
 		createNodes(node, displayMap);
 		positionNodes(node, displayMap);
+		drawEdges(node, displayMap);
 		
 	}
 	
@@ -181,8 +223,6 @@ class NodeVis extends Sprite {
 		var d = displayMap[node];
 		d.mark = true;
 		
-		var g = graphics;
-		
 		var num = node.targets.length;
 		var tcx:Float = 0;
 		for (i in 0...num) {
@@ -199,32 +239,34 @@ class NodeVis extends Sprite {
 				positionNodes(edge.drain, displayMap, d);
 			}
 			
-			//L.debug("ch".lpad(" ", 2+level*2), level, tcx);
-			//if (!skip) {
-				//td.x = i*20;
-				//td.x = tcx;
-				//td.y = 40;
-				//tcx += td.contentWidth;
-			//}
-			
 			var a = old ? td : d;
 			var b = old ? d : td;
 			drawEdge(edge, a, b);
 			
 		}
 		
-			//d.x = parent.x + (index+0.5-num*0.5)*spacing;
-		//d.x = cx;
-		//d.y = 20;
+	}
+	
+	function drawEdges(node:StateNode, displayMap:Map<StateNode, DisplayNode>, parent:DisplayNode = null) {
 		
-		//if (parent != null) {
-			//var g = parent.graphics;
-			//g.lineStyle(1, 0xFFFFFF, 0.2);
-			//g.moveTo(0, 0);
-			//g.lineTo(d.x, d.y);
-		//}
+		if (parent == null) {
+			clearMarks();
+			var g = graphics;
+			g.clear();
+		}
 		
+		var d = displayMap[node];
+		d.mark = true;
 		
+		for (edge in node.targets) {
+			var td = displayMap[edge.drain];
+			
+			var a = td.mark ? td : d;
+			var b = td.mark ? d : td;
+			drawEdge(edge, a, b);
+			
+			if (!td.mark) drawEdges(edge.drain, displayMap, d);
+		}
 	}
 	
 	function drawEdge(edge:StateNode.Edge, da:DisplayNode, db:DisplayNode) {
@@ -234,13 +276,13 @@ class NodeVis extends Sprite {
 		var a = globalToLocal(da.localToGlobal(new Point()));
 		var b = globalToLocal(db.localToGlobal(new Point()));
 		
-		g.lineStyle(1, 0xFFFFFF, 0.2);
+		g.lineStyle(0, 0xFFFFFF, 0.2);
 		g.moveTo(a.x, a.y);
 		
 		if (da == db) {
 			var selfRadius = 15;
 			g.drawCircle(a.x, a.y+selfRadius, selfRadius);
-			addLabel(edge.label, a.x+selfRadius, a.y+selfRadius, 0.3);
+			addEdgeLabel(edge, a.x+selfRadius, a.y+selfRadius, 0.3);
 		} else {
 			var d = b.subtract(a);
 			var n = d.clone(); n.normalize(1);
@@ -271,11 +313,11 @@ class NodeVis extends Sprite {
 			//ld.x += dist*Math.cos(angle);
 			//ld.y += dist*Math.sin(angle);
 		
-			addLabel(edge.label, b.x+ld.x, b.y+ld.y, angle);
+			addEdgeLabel(edge, b.x+ld.x, b.y+ld.y, angle);
 		}
 	}
 	
-	function addLabel(name:String, x:Float, y:Float, angle:Float) {
+	function addEdgeLabel(edge:StateNode.Edge, x:Float, y:Float, angle:Float) {
 		//var label = new TextField();
 		//label.defaultTextFormat = new TextFormat("Arial", 10, 0xFFFFFF);
 		//label.autoSize = TextFieldAutoSize.LEFT;
@@ -286,25 +328,48 @@ class NodeVis extends Sprite {
 		//label.rotation = angle*180/Math.PI;
 		//addChild(label);
 		//labels.push(label);
-		var con = new Sprite();
-		var rot = new Sprite();
 		
-		var tcm = new TextContainerManager(rot, labelConfig);
-		tcm.editingMode = EditingMode.READ_ONLY;
-		tcm.compositionWidth = Math.NaN;
-		tcm.compositionHeight = Math.NaN;
-		tcm.setText(name);
-		tcm.updateContainer();
-		
-		rot.y = -tcm.getContentBounds().height/2;
+		var con = edgeLabels[edge];
+		if (con == null) {
+			con = new Sprite();
+			var rot = new Sprite();
+			
+			var label = edge.label;
+			var postfix = switch (edge.label) {
+				case " ": "space";
+				case '"': "quote";
+				case "'": "apostrophe";
+				case ",": "comma";
+				case ".": "dot";
+				case "-": "minus";
+				case "_": "underscore";
+				case ":": "colon";
+				case ";": "semicolon";
+				case "`": "backtick";
+				default: null;
+			}
+			if (postfix != null) label += ' ($postfix)';
+			
+			
+			var tcm = new TextContainerManager(rot, labelConfig);
+			tcm.editingMode = EditingMode.READ_ONLY;
+			tcm.compositionWidth = Math.NaN;
+			tcm.compositionHeight = Math.NaN;
+			tcm.setText(label);
+			tcm.updateContainer();
+			
+			rot.y = -tcm.getContentBounds().height/2;
+			
+			con.addChild(rot);
+			con.mouseChildren = con.mouseEnabled = false;
+			addChild(con);
+			edgeLabels[edge] = con;
+		}
 		
 		con.x = x;
 		con.y = y;
 		con.rotation = angle*180/Math.PI;
 		
-		con.addChild(rot);
-		addChild(con);
-		labels.push(con);
 	}
 	
 	

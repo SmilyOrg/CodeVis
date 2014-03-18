@@ -9,9 +9,12 @@ import flash.display.Sprite;
 import flash.display.StageAlign;
 import flash.display.StageScaleMode;
 import flash.events.Event;
+import flash.events.MouseEvent;
 import flash.events.TimerEvent;
 import flash.events.UncaughtErrorEvent;
 import flash.external.ExternalInterface;
+import flash.geom.Matrix;
+import flash.geom.Transform;
 import flash.Lib;
 import flash.utils.Timer;
 import flashx.textLayout.events.SelectionEvent;
@@ -19,10 +22,16 @@ import haxe.Http;
 import haxeparser.Data.Token;
 import haxeparser.Data.TokenDef;
 import haxeparser.HaxeLexer;
+import hxparse.Lexer;
 import hxparse.State;
 import hxparse.UnexpectedChar;
 
 using StringTools;
+
+typedef LexerOption = {
+	type:Class<Lexer>,
+	ruleset:Dynamic
+}
 
 class CodeVis extends Sprite {
 	
@@ -37,19 +46,31 @@ class CodeVis extends Sprite {
 	private static var L:Logger = Logging.getLogger(CodeVis);
 	
 	var defaultPath = "test/Main.hx";
+	var consoleHeight:Float = 100;
+	var externalSize = true;
+	//var externalSize = false;
+	
 	var filePath:String;
 	
 	var console:Console;
 	var editor:Editor;
 	
+	var visContainer:Sprite;
 	var nodeVis:NodeVis;
 	
 	var progressBar:Shape;
 	var progressBarProgress:Float = 0;
 	
+	var lexers:Array<LexerOption> = [
+		{ type: HaxeLexer, ruleset: HaxeLexer.tok },
+		{ type: PrintfParser.PrintfLexer, ruleset: PrintfParser.PrintfLexer.tok }
+	];
+	
+	var currentLexer:LexerOption;
+	
 	var source:String;
 	var sourceName:String;
-	var lexer:HaxeLexer;
+	var lexer:Lexer;
 	var tokenizationStart:Int;
 	var current:Token;
 	var totalTokens:Int;
@@ -58,8 +79,6 @@ class CodeVis extends Sprite {
 	var steps:Array<StateNode.Step>;
 	var posMap:Map<Int, Array<StateNode.Step>>;
 	
-	var consoleHeight:Float = 100;
-	
 	var delayedUpdate:Timer;
 	
 	//var consoleVisible:Bool = false;
@@ -67,6 +86,10 @@ class CodeVis extends Sprite {
 	
 	function new() {
 		super();
+		
+		currentLexer = lexers[0];
+		// TODO token mess?
+		//currentLexer = lexers[1];
 		
 		console = new Console();
 		addChild(console);
@@ -83,9 +106,11 @@ class CodeVis extends Sprite {
 		editor.addEventListener(SelectionEvent.SELECTION_CHANGE, selectionChange);
 		addChild(editor);
 		
+		visContainer = new Sprite();
 		nodeVis = new NodeVis();
-		nodeVis.y = 20;
-		addChild(nodeVis);
+		visContainer.y = 20;
+		visContainer.addChild(nodeVis);
+		addChild(visContainer);
 		
 		//consoleBar = new Sprite();
 		//consoleBar.buttonMode = true;
@@ -115,10 +140,9 @@ class CodeVis extends Sprite {
 			defaultPath = "bin/" + defaultPath;
 			ExternalInterface.addCallback("locationHashChanged", locationHashChanged);
 			ExternalInterface.call("swfInit");
-		} else {
-			filePath = defaultPath;
-			loadPath();
 		}
+		filePath = defaultPath;
+		loadPath();
 	}
 	
 	function addedToStage(e:Event) {
@@ -129,6 +153,10 @@ class CodeVis extends Sprite {
 			L.info("Loading file", file);
 		}
 		stage.addEventListener(Event.RESIZE, stageResize);
+		stage.addEventListener(MouseEvent.MOUSE_WHEEL, mouseWheel);
+		stage.addEventListener(MouseEvent.MOUSE_WHEEL, mouseWheel, true);
+		stage.addEventListener(MouseEvent.MIDDLE_MOUSE_DOWN, mouseDown);
+		stage.addEventListener(MouseEvent.MIDDLE_MOUSE_UP, mouseUp);
 		stageResize();
 	}
 	
@@ -198,7 +226,8 @@ class CodeVis extends Sprite {
 		if (lexer != null) {
 			lexer.stateCallback = null;
 		}
-		lexer = new HaxeLexer(ByteData.ofString(source), fileName);
+		//lexer = new HaxeLexer(ByteData.ofString(source), fileName);
+		lexer = Type.createInstance(currentLexer.type, [ByteData.ofString(source), fileName]);
 		lexer.stateCallback = stateCallback;
 	}
 	
@@ -262,7 +291,7 @@ class CodeVis extends Sprite {
 	function nextToken():Bool {
 		steps = [];
 		try {
-			current = lexer.token(HaxeLexer.tok);
+			current = lexer.token(currentLexer.ruleset);
 		} catch(e:UnexpectedChar) {
 			L.error(e);
 			return true;
@@ -305,18 +334,23 @@ class CodeVis extends Sprite {
 	}
 	
 	function selectionChange(e:SelectionEvent) {
+		nodeVis.clearSelection();
+		editor.hideTooltip();
+		
 		var s = e.selectionState;
 		//var pos = s.anchorPosition;
 		var acc = new Array<StateNode.Step>();
 		var limit = 50;
-		var end = s.absoluteEnd+1;
-		var trim = end-s.absoluteStart > limit;
+		var end = s.absoluteEnd;
+		var diff = end-s.absoluteStart;
+		//if (diff <= 0) return;
+		if (diff <= 0) end += 1;
+		var trim = diff > limit;
 		end = trim ? s.absoluteStart+limit : end;
 		for (pos in s.absoluteStart...end) {
 			var ps = posMap[pos];
 			if (ps != null) acc = acc.concat(ps);
 		}
-		nodeVis.clearSelection();
 		for (node in acc) {
 			nodeVis.select(nodeMap[node.state]);
 		}
@@ -334,6 +368,8 @@ class CodeVis extends Sprite {
 		
 		//L.debug("root", root.targets.join("\n"));
 		
+		nodeVis.x = nodeVis.y = 0;
+		nodeVis.scaleX = nodeVis.scaleY = 1;
 		nodeVis.visualize(root);
 		
 		updateNodeVis();
@@ -346,15 +382,67 @@ class CodeVis extends Sprite {
 	
 	function updateNodeVis() {
 		var bounds = nodeVis.getBounds(nodeVis);
-		nodeVis.x = stage.stageWidth-bounds.right;
+		visContainer.x = stage.stageWidth-bounds.right;
+	}
+	
+	function mouseWheel(e:MouseEvent) {
+		if (!e.ctrlKey) return;
+		e.stopPropagation();
+		e.stopImmediatePropagation();
+		
+		
+		//var scale = nodeVis.scaleX*(1+e.delta*0.1);
+		var sign = e.delta > 0 ? 1 : -1;
+		var scale = 1+sign*0.2;
+		
+		//var scale = nodeVis.scaleX*(1-e.delta*0.2);
+		
+		var mx = visContainer.mouseX, my = visContainer.mouseY;
+		
+		var m = nodeVis.transform.matrix;
+		
+		var pm = m.clone();
+		var t = pm.clone();
+		
+		m.translate(-mx, -my);
+		m.scale(scale, scale);
+		m.translate(mx, my);
+		
+		nodeVis.transform.matrix = m;
+		
+		//Juicer.to(nodeVis.transform.matrix, m);
+		
+		//m.tween(a
+	}
+	
+	function mouseDown(e:MouseEvent) {
+		nodeVis.startDrag();
+	}
+	
+	function mouseUp(e:MouseEvent) {
+		nodeVis.stopDrag();
+	}
+	
+	function tweenMatrix(target:Transform, pm:Matrix, t:Matrix, m:Matrix, v:Float) {
+		if (target == null) return;
+		t.a = pm.a+(pm.a-m.a)*v;
+		t.b = pm.b+(pm.b-m.b)*v;
+		t.c = pm.c+(pm.c-m.c)*v;
+		t.d = pm.d+(pm.d-m.d)*v;
+		t.tx = pm.tx+(pm.tx-m.tx)*v;
+		t.ty = pm.ty+(pm.ty-m.ty)*v;
+		target.matrix = t;
 	}
 	
 	function resizeToContent() {
-		if (ExternalInterface.available) ExternalInterface.call("resizeSWF", stage.stageWidth, height);
+		if (externalSize && ExternalInterface.available) ExternalInterface.call("resizeSWF", -1, height);
 	}
 	
 	function stageResize(e:Event = null) {
 		//redrawConsoleBar();
+		if (!externalSize || !ExternalInterface.available) {
+			editor.resize(stage.stageWidth, stage.stageHeight-consoleHeight);
+		}
 		console.resize(stage.stageWidth, consoleHeight);
 		updateProgressBar();
 		updateNodeVis();
