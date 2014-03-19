@@ -33,7 +33,7 @@ import haxeparser.Data.TokenDef;
 import haxeparser.HaxeLexer;
 import haxeparser.HaxeParser;
 import hxparse.Lexer;
-import hxparse.Ruleset.Ruleset;
+import hxparse.Ruleset;
 import hxparse.State;
 import hxparse.UnexpectedChar;
 
@@ -42,6 +42,11 @@ using StringTools;
 typedef LexerOption = {
 	type:Class<Lexer>,
 	ruleset:Dynamic
+}
+
+typedef RootNode = {
+	node:StateNode,
+	ruleset:Ruleset<Dynamic>
 }
 
 class CodeVis extends Sprite {
@@ -91,7 +96,7 @@ class CodeVis extends Sprite {
 	var current:Token;
 	var totalTokens:Int;
 	
-	var roots:Array<StateNode>;
+	var roots:Array<RootNode>;
 	var nodeMap:Map<State, StateNode>;
 	var steps:Array<StateNode.Step>;
 	var posMap:Map<Int, Array<StateNode.Step>>;
@@ -173,9 +178,9 @@ class CodeVis extends Sprite {
 		
 		nodeMap = new Map<State, StateNode>();
 		
-		roots = new Array<StateNode>();
-		for (ruleset in (Reflect.getProperty(currentLexer.type, "generatedRulesets"):Array<hxparse.Ruleset<Dynamic>>)) {
-			roots.push(StateNode.processGraphState(ruleset.state, nodeMap));
+		roots = [];
+		for (ruleset in (Reflect.getProperty(currentLexer.type, "generatedRulesets"):Array<Ruleset<Dynamic>>)) {
+			roots.push({ node: StateNode.processGraphState(ruleset.state, nodeMap), ruleset: ruleset });
 		}
 		
 		visualizeNodes();
@@ -457,9 +462,8 @@ class CodeVis extends Sprite {
 		nodeVis.scaleX = nodeVis.scaleY = 1;
 		
 		nodeVis.clear();
-		for (i in 0...roots.length) {
-			var root = roots[i];
-			nodeVis.visualize(root, (Reflect.getProperty(currentLexer.type, "generatedRulesetNames"):Array<String>)[i]);
+		for (root in roots) {
+			nodeVis.visualize(root.node, root.ruleset.name);
 		}
 		
 		updateNodeVis();
