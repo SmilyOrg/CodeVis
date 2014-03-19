@@ -236,7 +236,6 @@ class Editor extends Sprite {
 		var boundsMax = getCharBoundsAtPosition(max);
 		
 		if (boundsMin == null || boundsMax == null) return;
-		//L.debug("bounds", Stopwatch.tock());
 		
 		var tag:TokenTag = new TokenTag(token, steps);
 		tag.x = boundsMin.x;
@@ -245,7 +244,6 @@ class Editor extends Sprite {
 		tokenDisplay.addChild(tag);
 		tokenTags.push(tag);
 		//*/
-		//L.debug("tag", Stopwatch.tock());
 		
 		/*
 		var paragraph:ParagraphElement = cast textflow.getChildAt(0);
@@ -389,6 +387,7 @@ class Editor extends Sprite {
 		var bounds = getCharBoundsAtPosition(pos);
 		tooltip.x = bounds.x;
 		tooltip.y = bounds.y-tooltip.height-8;
+		//tooltip.y = bounds.bottom;
 	}
 	
 	private function textChanged(e:FlowOperationEvent) {

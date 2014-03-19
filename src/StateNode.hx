@@ -34,7 +34,7 @@ class Edge {
 
 class StateNode {
 	
-	static public function processGraphState(state:State, nodeMap:Map<State, StateNode> = null):StateNode {
+	static public function processGraphState(state:State, nodeMap:Map<State, StateNode>):StateNode {
 		
 		if (state == null) return null;
 		
@@ -159,5 +159,9 @@ class StateNode {
 	public var edgeByInput:Vector<Edge>;
 	
 	public function new() { }
+	
+	public function toString():String {
+		return "[StateNode "+targets.join("  ")+"]";
+	}
 	
 }

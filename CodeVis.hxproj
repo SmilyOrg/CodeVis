@@ -31,6 +31,8 @@
     <library name="slf4hx" />
     <library name="hxparse" />
     <library name="haxeparser" />
+    <library name="cppparser" />
+    <library name="hxtemplo" />
     <library name="polygonal-ds" />
     <library name="polygonal-core" />
     <library name="actuate" />

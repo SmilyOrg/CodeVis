@@ -3,12 +3,17 @@ package ;
 import byte.ByteData;
 import com.furusystems.slf4hx.loggers.Logger;
 import com.furusystems.slf4hx.Logging;
+import cppparser.CppLexer;
 import edit.Editor;
+import flash.display.BitmapData;
+import flash.display.PNGEncoderOptions;
 import flash.display.Shape;
 import flash.display.Sprite;
 import flash.display.StageAlign;
+import flash.display.StageQuality;
 import flash.display.StageScaleMode;
 import flash.events.Event;
+import flash.events.KeyboardEvent;
 import flash.events.MouseEvent;
 import flash.events.TimerEvent;
 import flash.events.UncaughtErrorEvent;
@@ -16,13 +21,19 @@ import flash.external.ExternalInterface;
 import flash.geom.Matrix;
 import flash.geom.Transform;
 import flash.Lib;
+import flash.net.FileReference;
+import flash.ui.Keyboard;
+import flash.utils.ByteArray;
 import flash.utils.Timer;
+import flashx.textLayout.edit.SelectionState;
 import flashx.textLayout.events.SelectionEvent;
 import haxe.Http;
 import haxeparser.Data.Token;
 import haxeparser.Data.TokenDef;
 import haxeparser.HaxeLexer;
+import haxeparser.HaxeParser;
 import hxparse.Lexer;
+import hxparse.Ruleset.Ruleset;
 import hxparse.State;
 import hxparse.UnexpectedChar;
 
@@ -54,6 +65,7 @@ class CodeVis extends Sprite {
 	
 	var console:Console;
 	var editor:Editor;
+	var selectionState:SelectionState;
 	
 	var visContainer:Sprite;
 	var nodeVis:NodeVis;
@@ -63,7 +75,10 @@ class CodeVis extends Sprite {
 	
 	var lexers:Array<LexerOption> = [
 		{ type: HaxeLexer, ruleset: HaxeLexer.tok },
-		{ type: PrintfParser.PrintfLexer, ruleset: PrintfParser.PrintfLexer.tok }
+		{ type: PrintfParser.PrintfLexer, ruleset: PrintfParser.PrintfLexer.tok },
+		{ type: JSONParser.JSONLexer, ruleset: JSONParser.JSONLexer.tok },
+		{ type: templo.Lexer, ruleset: templo.Lexer.element },
+		{ type: CppLexer, ruleset: CppLexer.tok }
 	];
 	
 	var currentLexer:LexerOption;
@@ -71,10 +86,12 @@ class CodeVis extends Sprite {
 	var source:String;
 	var sourceName:String;
 	var lexer:Lexer;
+	var parser:HaxeParser;
 	var tokenizationStart:Int;
 	var current:Token;
 	var totalTokens:Int;
 	
+	var roots:Array<StateNode>;
 	var nodeMap:Map<State, StateNode>;
 	var steps:Array<StateNode.Step>;
 	var posMap:Map<Int, Array<StateNode.Step>>;
@@ -87,9 +104,14 @@ class CodeVis extends Sprite {
 	function new() {
 		super();
 		
+		// TODO token plugins
+		
 		currentLexer = lexers[0];
-		// TODO token mess?
 		//currentLexer = lexers[1];
+		//currentLexer = lexers[2];
+		//currentLexer = lexers[3];
+		//currentLexer = lexers[4];
+		
 		
 		console = new Console();
 		addChild(console);
@@ -141,6 +163,7 @@ class CodeVis extends Sprite {
 			ExternalInterface.addCallback("locationHashChanged", locationHashChanged);
 			ExternalInterface.call("swfInit");
 		}
+		
 		filePath = defaultPath;
 		loadPath();
 	}
@@ -148,15 +171,26 @@ class CodeVis extends Sprite {
 	function addedToStage(e:Event) {
 		loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, uncaughtError);
 		
+		nodeMap = new Map<State, StateNode>();
+		
+		roots = new Array<StateNode>();
+		for (ruleset in (Reflect.getProperty(currentLexer.type, "generatedRulesets"):Array<hxparse.Ruleset<Dynamic>>)) {
+			roots.push(StateNode.processGraphState(ruleset.state, nodeMap));
+		}
+		
+		visualizeNodes();
+		
 		var file = loaderInfo.parameters.file;
 		if (file != null) {
 			L.info("Loading file", file);
 		}
+		
 		stage.addEventListener(Event.RESIZE, stageResize);
 		stage.addEventListener(MouseEvent.MOUSE_WHEEL, mouseWheel);
 		stage.addEventListener(MouseEvent.MOUSE_WHEEL, mouseWheel, true);
 		stage.addEventListener(MouseEvent.MIDDLE_MOUSE_DOWN, mouseDown);
 		stage.addEventListener(MouseEvent.MIDDLE_MOUSE_UP, mouseUp);
+		stage.addEventListener(KeyboardEvent.KEY_DOWN, keyDown);
 		stageResize();
 	}
 	
@@ -219,6 +253,7 @@ class CodeVis extends Sprite {
 		this.source = source;
 		this.sourceName = sourceName;
 		updateLexer(source, sourceName);
+		parser = new HaxeParser(ByteData.ofString(source), sourceName);
 		tokenizeStart();
 	}
 	
@@ -233,6 +268,8 @@ class CodeVis extends Sprite {
 	
 	function stateCallback(state:State, position:Int, input:Int) {
 		var node = StateNode.processGraphState(state, nodeMap);
+		
+		nodeVis.highlight(node);
 		
 		var step = new StateNode.Step();
 		step.state = state;
@@ -259,13 +296,14 @@ class CodeVis extends Sprite {
 	
 	function tokenizeStart() {
 		tokenizeStop();
-		nodeVis.clear();
+		//nodeVis.clear();
+		nodeVis.clearHighlight();
 		
 		tokenizationStart = Lib.getTimer();
 		totalTokens = 0;
 		editor.clearTokens();
-		nodeMap = new Map<State, StateNode>();
-		posMap = new Map<Int, Array<StateNode.Step>>();
+		//nodeMap = new Map<State, StateNode>();
+		posMap = new Map < Int, Array<StateNode.Step> > ();
 		
 		addEventListener(Event.ENTER_FRAME, tokenizeRun);
 		//nextToken();
@@ -328,26 +366,73 @@ class CodeVis extends Sprite {
 		L.info('Lexed $totalTokens tokens in ${Lib.getTimer()-tokenizationStart}ms');
 		removeEventListener(Event.ENTER_FRAME, tokenizeRun);
 		editor.updateFlow();
-		visualizeNodes();
+		selectionChange();
+		
+		parseSource();
+		
+		//screenshot();
+		//visualizeNodes();
 		//delayedUpdate.reset();
 		//delayedUpdate.start();
 	}
 	
-	function selectionChange(e:SelectionEvent) {
+	function parseSource() {
+		var ast = parser.parse();
+		for (decl in ast.decls) {
+			L.debug(decl);
+		}
+	}
+	
+	function screenshot() {
+		var bounds = nodeVis.getBounds(nodeVis);
+		
+		var margin = 20;
+		
+		var cw = bounds.width, ch = bounds.height;
+		//var tw = 800, th = Math.ceil(tw/cw*ch);
+		
+		//var data = new BitmapData(800, 600, false, stage.color);
+		//var data = new BitmapData(1920, 1080, false, stage.color);
+		var data = new BitmapData(1920*2, 1080*2, false, stage.color);
+		
+		var tw = data.width-margin*2, th = data.height-margin*2;
+		var scale = tw/th < cw/ch ? tw/cw : th/ch;
+		
+		var m = new Matrix();
+		m.translate(-bounds.left, -bounds.top);
+		m.scale(scale, scale);
+		m.translate(tw-cw*scale+margin, margin);
+		
+		data.drawWithQuality(nodeVis, m, null, null, null, true, StageQuality.HIGH_16X16);
+		
+		//addChild(new Bitmap(data));
+		
+		var bytes = new ByteArray();
+		data.encode(data.rect, new PNGEncoderOptions(), bytes);
+		var f = new FileReference();
+		f.save(bytes, "graph.png");
+	}
+	
+	function selectionChange(e:SelectionEvent = null) {
 		nodeVis.clearSelection();
 		editor.hideTooltip();
 		
-		var s = e.selectionState;
+		var s = e == null ? selectionState : e.selectionState;
+		if (s == null) return;
+		
+		selectionState = s;
 		//var pos = s.anchorPosition;
 		var acc = new Array<StateNode.Step>();
 		var limit = 50;
+		var start = s.absoluteStart;
 		var end = s.absoluteEnd;
-		var diff = end-s.absoluteStart;
+		var diff = end-start;
 		//if (diff <= 0) return;
-		if (diff <= 0) end += 1;
+		//if (diff <= 0) end += 1;
+		if (diff <= 0) start -= 1;
 		var trim = diff > limit;
-		end = trim ? s.absoluteStart+limit : end;
-		for (pos in s.absoluteStart...end) {
+		end = trim ? start+limit : end;
+		for (pos in start...end) {
 			var ps = posMap[pos];
 			if (ps != null) acc = acc.concat(ps);
 		}
@@ -363,16 +448,23 @@ class CodeVis extends Sprite {
 		if (!keys.hasNext()) return;
 		var node = nodeMap[keys.next()];
 		
-		var root = node;
-		while (root.parent != null) root = root.parent;
+		//var root = node;
+		//while (root.parent != null) root = root.parent;
 		
 		//L.debug("root", root.targets.join("\n"));
 		
 		nodeVis.x = nodeVis.y = 0;
 		nodeVis.scaleX = nodeVis.scaleY = 1;
-		nodeVis.visualize(root);
+		
+		nodeVis.clear();
+		for (i in 0...roots.length) {
+			var root = roots[i];
+			nodeVis.visualize(root, (Reflect.getProperty(currentLexer.type, "generatedRulesetNames"):Array<String>)[i]);
+		}
 		
 		updateNodeVis();
+		
+		//screenshot();
 	}
 	
 	function update(e:Event) {
@@ -383,6 +475,10 @@ class CodeVis extends Sprite {
 	function updateNodeVis() {
 		var bounds = nodeVis.getBounds(nodeVis);
 		visContainer.x = stage.stageWidth-bounds.right;
+	}
+	
+	function keyDown(e:KeyboardEvent) {
+		if (e.ctrlKey && e.keyCode == Keyboard.N) screenshot();
 	}
 	
 	function mouseWheel(e:MouseEvent) {
