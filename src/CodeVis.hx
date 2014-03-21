@@ -1,11 +1,10 @@
 package ;
 
-import byte.ByteData;
 import com.furusystems.slf4hx.loggers.Logger;
 import com.furusystems.slf4hx.Logging;
-import cppparser.CppLexer;
 import edit.Editor;
 import flash.display.BitmapData;
+import flash.display.DisplayObject;
 import flash.display.PNGEncoderOptions;
 import flash.display.Shape;
 import flash.display.Sprite;
@@ -28,21 +27,14 @@ import flash.utils.Timer;
 import flashx.textLayout.edit.SelectionState;
 import flashx.textLayout.events.SelectionEvent;
 import haxe.Http;
-import haxeparser.Data.Token;
-import haxeparser.Data.TokenDef;
-import haxeparser.HaxeLexer;
-import haxeparser.HaxeParser;
 import hxparse.Lexer;
-import hxparse.Ruleset;
+import hxparse.Ruleset.Ruleset;
 import hxparse.State;
 import hxparse.UnexpectedChar;
+import interfaces.HaxeInterface;
+import interfaces.LexerInterface;
 
 using StringTools;
-
-typedef LexerOption = {
-	type:Class<Lexer>,
-	ruleset:Dynamic
-}
 
 typedef RootNode = {
 	node:StateNode,
@@ -78,6 +70,7 @@ class CodeVis extends Sprite {
 	var progressBar:Shape;
 	var progressBarProgress:Float = 0;
 	
+	/*
 	var lexers:Array<LexerOption> = [
 		{ type: HaxeLexer, ruleset: HaxeLexer.tok },
 		{ type: PrintfParser.PrintfLexer, ruleset: PrintfParser.PrintfLexer.tok },
@@ -87,19 +80,19 @@ class CodeVis extends Sprite {
 	];
 	
 	var currentLexer:LexerOption;
+	*/
+	
+	var stepHandler:StepHandler;
+	var lexerfaces:Array<LexerInterface> = [];
+	var lexerface:LexerInterface;
 	
 	var source:String;
 	var sourceName:String;
-	var lexer:Lexer;
-	var parser:HaxeParser;
 	var tokenizationStart:Int;
-	var current:Token;
 	var totalTokens:Int;
 	
 	var roots:Array<RootNode>;
 	var nodeMap:Map<State, StateNode>;
-	var steps:Array<StateNode.Step>;
-	var posMap:Map<Int, Array<StateNode.Step>>;
 	
 	var delayedUpdate:Timer;
 	
@@ -111,11 +104,24 @@ class CodeVis extends Sprite {
 		
 		// TODO token plugins
 		
-		currentLexer = lexers[0];
+		//currentLexer = lexers[0];
 		//currentLexer = lexers[1];
 		//currentLexer = lexers[2];
 		//currentLexer = lexers[3];
 		//currentLexer = lexers[4];
+		
+		roots = [];
+		nodeMap = new Map<State, StateNode>();
+		stepHandler = new StepHandler(nodeMap);
+		
+		lexerfaces.push(new interfaces.HaxeInterface.Lexerface(stepHandler));
+		//lexerfaces.push(new interfaces.MiscInterfaces.PrintfLexerface(stepHandler));
+		lexerfaces.push(new interfaces.MiscInterfaces.TemploLexerface(stepHandler));
+		
+		lexerface = lexerfaces[0];
+		for (ruleset in lexerface.getRulesets()) {
+			roots.push({ node: StateNode.processGraphState(ruleset.state, nodeMap), ruleset: ruleset });
+		}
 		
 		
 		console = new Console();
@@ -176,12 +182,12 @@ class CodeVis extends Sprite {
 	function addedToStage(e:Event) {
 		loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, uncaughtError);
 		
-		nodeMap = new Map<State, StateNode>();
 		
-		roots = [];
+		/*
 		for (ruleset in (Reflect.getProperty(currentLexer.type, "generatedRulesets"):Array<Ruleset<Dynamic>>)) {
 			roots.push({ node: StateNode.processGraphState(ruleset.state, nodeMap), ruleset: ruleset });
 		}
+		*/
 		
 		visualizeNodes();
 		
@@ -257,35 +263,20 @@ class CodeVis extends Sprite {
 	function updateSource(source:String, sourceName:String) {
 		this.source = source;
 		this.sourceName = sourceName;
-		updateLexer(source, sourceName);
-		parser = new HaxeParser(ByteData.ofString(source), sourceName);
+		lexerface.update(source, sourceName);
+		//parser = new HaxeParser(ByteData.ofString(source), sourceName);
 		tokenizeStart();
 	}
 	
-	function updateLexer(source:String, fileName:String) {
-		if (lexer != null) {
-			lexer.stateCallback = null;
-		}
+	//function updateLexerface(source:String, fileName:String) {
 		//lexer = new HaxeLexer(ByteData.ofString(source), fileName);
-		lexer = Type.createInstance(currentLexer.type, [ByteData.ofString(source), fileName]);
-		lexer.stateCallback = stateCallback;
-	}
+		//lexer = Type.createInstance(currentLexer.type, [ByteData.ofString(source), fileName]);
+		//lexer.stateCallback = stateCallback;
+	//}
 	
-	function stateCallback(state:State, position:Int, input:Int) {
-		var node = StateNode.processGraphState(state, nodeMap);
-		
+	//function stateCallback(state:State, position:Int, input:Int) {
+	function stepCallback(step:StateNode.Step, node:StateNode) {
 		nodeVis.highlight(node);
-		
-		var step = new StateNode.Step();
-		step.state = state;
-		step.position = position;
-		step.input = input;
-		if (node != null && input > -1) step.transition = node.edgeByInput[input];
-		
-		steps.push(step);
-		var ps = posMap[position];
-		if (ps == null) posMap[position] = ps = new Array<StateNode.Step>();
-		ps.push(step);
 	}
 	
 	
@@ -306,9 +297,8 @@ class CodeVis extends Sprite {
 		
 		tokenizationStart = Lib.getTimer();
 		totalTokens = 0;
-		editor.clearTokens();
+		editor.clearTags();
 		//nodeMap = new Map<State, StateNode>();
-		posMap = new Map < Int, Array<StateNode.Step> > ();
 		
 		addEventListener(Event.ENTER_FRAME, tokenizeRun);
 		//nextToken();
@@ -332,29 +322,33 @@ class CodeVis extends Sprite {
 	}
 	
 	function nextToken():Bool {
-		steps = [];
+		
+		var tag = null;
 		try {
-			current = lexer.token(currentLexer.ruleset);
+			//tag = lexer.token(currentLexer.ruleset);
+			//tag = lexer.token(currentLexer.ruleset);
+			tag = lexerface.nextTag();
 		} catch(e:UnexpectedChar) {
 			L.error(e);
-			return true;
-		} catch(e:LexerError) {
-			L.error(e.msg);
 			return true;
 		}
 		
 		updateProgress();
 		
-		var end = current == null || current.tok == TokenDef.Eof;
+		//L.debug(tag);
+		
+		//var end = token == null || current.tok == TokenDef.Eof;
+		var end = tag == null;
 		if (end) return true;
 		
-		editor.addToken(current, steps);
+		//editor.addToken(current, steps);
+		editor.addTag(tag);
 		
 		return false;
 	}
 	
 	function updateProgress() {
-		progressBarProgress = current == null ? 1 : current.pos.max/source.length;
+		//progressBarProgress = current == null ? 1 : current.pos.max/source.length;
 		updateProgressBar();
 	}
 	
@@ -373,7 +367,7 @@ class CodeVis extends Sprite {
 		editor.updateFlow();
 		selectionChange();
 		
-		parseSource();
+		//parseSource();
 		
 		//screenshot();
 		//visualizeNodes();
@@ -381,15 +375,24 @@ class CodeVis extends Sprite {
 		//delayedUpdate.start();
 	}
 	
+	/*
 	function parseSource() {
 		var ast = parser.parse();
 		for (decl in ast.decls) {
-			L.debug(decl);
+			editor.addTag(new HaxeTags.DeclarationTag(decl));
+			switch (decl) {
+				case EClass( { data: data } ):
+					for (field in data) {
+						editor.addTag(new HaxeTags.FieldTag(field));
+					}
+				default:
+			}
 		}
 	}
+	*/
 	
-	function screenshot() {
-		var bounds = nodeVis.getBounds(nodeVis);
+	function screenshot(source:DisplayObject) {
+		var bounds = source.getBounds(source);
 		
 		var margin = 20;
 		
@@ -408,14 +411,14 @@ class CodeVis extends Sprite {
 		m.scale(scale, scale);
 		m.translate(tw-cw*scale+margin, margin);
 		
-		data.drawWithQuality(nodeVis, m, null, null, null, true, StageQuality.HIGH_16X16);
+		data.drawWithQuality(source, m, null, null, null, true, StageQuality.HIGH_16X16);
 		
 		//addChild(new Bitmap(data));
 		
 		var bytes = new ByteArray();
 		data.encode(data.rect, new PNGEncoderOptions(), bytes);
 		var f = new FileReference();
-		f.save(bytes, "graph.png");
+		f.save(bytes, "screenshot.png");
 	}
 	
 	function selectionChange(e:SelectionEvent = null) {
@@ -438,7 +441,7 @@ class CodeVis extends Sprite {
 		var trim = diff > limit;
 		end = trim ? start+limit : end;
 		for (pos in start...end) {
-			var ps = posMap[pos];
+			var ps = stepHandler.posMap[pos];
 			if (ps != null) acc = acc.concat(ps);
 		}
 		for (node in acc) {
@@ -482,7 +485,12 @@ class CodeVis extends Sprite {
 	}
 	
 	function keyDown(e:KeyboardEvent) {
-		if (e.ctrlKey && e.keyCode == Keyboard.N) screenshot();
+		if (e.ctrlKey) {
+			switch (e.keyCode) {
+				case Keyboard.N: screenshot(nodeVis);
+				case Keyboard.M: screenshot(this);
+			}
+		}
 	}
 	
 	function mouseWheel(e:MouseEvent) {

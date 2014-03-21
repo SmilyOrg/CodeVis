@@ -34,6 +34,12 @@ class Edge {
 
 class StateNode {
 	
+	/**
+	 * 
+	 * @param	state
+	 * @param	nodeMap
+	 * @return	The `StateNode` cached by the provided `nodeMap` for the provided `State` or `null` if `State` is `null`.
+	 */
 	static public function processGraphState(state:State, nodeMap:Map<State, StateNode>):StateNode {
 		
 		if (state == null) return null;
