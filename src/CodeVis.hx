@@ -31,7 +31,6 @@ import hxparse.Lexer;
 import hxparse.Ruleset.Ruleset;
 import hxparse.State;
 import hxparse.UnexpectedChar;
-import interfaces.HaxeInterface;
 import interfaces.LexerInterface;
 
 using StringTools;
@@ -53,7 +52,8 @@ class CodeVis extends Sprite {
 	
 	private static var L:Logger = Logging.getLogger(CodeVis);
 	
-	var defaultPath = "test/Main.hx";
+	//var defaultPath = "test/Main.hx";
+	var defaultPath = "test/listbase.h";
 	var consoleHeight:Float = 100;
 	var externalSize = true;
 	//var externalSize = false;
@@ -102,21 +102,14 @@ class CodeVis extends Sprite {
 	function new() {
 		super();
 		
-		// TODO token plugins
-		
-		//currentLexer = lexers[0];
-		//currentLexer = lexers[1];
-		//currentLexer = lexers[2];
-		//currentLexer = lexers[3];
-		//currentLexer = lexers[4];
-		
 		roots = [];
 		nodeMap = new Map<State, StateNode>();
 		stepHandler = new StepHandler(nodeMap);
 		
-		lexerfaces.push(new interfaces.HaxeInterface.Lexerface(stepHandler));
+		lexerfaces.push(new interfaces.haxe.Interface.Lexerface(stepHandler));
+		lexerfaces.push(new interfaces.cpp.Interface.Lexerface(stepHandler));
 		//lexerfaces.push(new interfaces.MiscInterfaces.PrintfLexerface(stepHandler));
-		lexerfaces.push(new interfaces.MiscInterfaces.TemploLexerface(stepHandler));
+		//lexerfaces.push(new interfaces.MiscInterfaces.TemploLexerface(stepHandler));
 		
 		lexerface = lexerfaces[0];
 		for (ruleset in lexerface.getRulesets()) {
@@ -181,13 +174,6 @@ class CodeVis extends Sprite {
 	
 	function addedToStage(e:Event) {
 		loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, uncaughtError);
-		
-		
-		/*
-		for (ruleset in (Reflect.getProperty(currentLexer.type, "generatedRulesets"):Array<Ruleset<Dynamic>>)) {
-			roots.push({ node: StateNode.processGraphState(ruleset.state, nodeMap), ruleset: ruleset });
-		}
-		*/
 		
 		visualizeNodes();
 		

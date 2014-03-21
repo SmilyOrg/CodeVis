@@ -1,16 +1,12 @@
-package interfaces;
-
+package interfaces.haxe;
 import byte.ByteData;
 import com.furusystems.slf4hx.loggers.Logger;
 import com.furusystems.slf4hx.Logging;
 import edit.Tag;
 import haxe.macro.Expr.Field;
-import haxeparser.HaxeLexer;
-import hxparse.State;
-import interfaces.HaxeInterface.TokenTag;
-import StepHandler;
-
 import haxeparser.Data;
+import haxeparser.HaxeLexer;
+import StepHandler;
 
 class Lexerface implements LexerInterface {
 	private static var L:Logger = Logging.getLogger(Lexerface);
@@ -51,7 +47,35 @@ class TokenTag extends StepTag {
 		return super.getInfo() + token.tok;
 	}
 	override function getColor() {
-		return Theme.getTokenColor(token);
+		return switch(token.tok) {
+			case Kwd(KwdImport),
+			     Kwd(KwdClass),
+				 Kwd(KwdEnum),
+				 Kwd(KwdAbstract),
+				 Kwd(KwdTypedef),
+				 Kwd(KwdPackage): Theme.identifier;
+				 
+			case Kwd(_),
+			     Const(CIdent("trace")): Theme.keyword;
+				 
+			case Const(CIdent(ident)):
+				var c = ident.charAt(0);
+				(c.toUpperCase() == c) ? Theme.type : Theme.identifier;
+				
+			case Const(CString(_)): Theme.string;
+			
+			case Const(CInt(_)),
+			     Const(CFloat(_)): Theme.number;
+				 
+			case Const(_): Theme.constant;
+			
+			case CommentLine(_),
+			     Comment(_): Theme.comment;
+				 
+			case Sharp(_): Theme.directive;
+			
+			default: Theme.foreground;
+		};
 	}
 }
 
