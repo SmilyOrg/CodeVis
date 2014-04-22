@@ -24,13 +24,15 @@
     <option noInlineOnDebug="False" />
     <option mainClass="CodeVis" />
     <option enabledebug="False" />
-    <option additional="-swf-lib src/assets/fonts.swc&#xA;-swf-lib lib/textLayout.swc" />
+    <option additional="-swf-lib src/assets/fonts.swc&#xA;-swf-lib lib/textLayout.swc&#xA;-swf-lib lib/LiquifyComps-1-47-4f5c71938054.swc" />
   </build>
   <!-- haxelib libraries -->
   <haxelib>
     <library name="slf4hx" />
     <library name="hxparse" />
     <library name="haxeparser" />
+    <library name="cppparser" />
+    <library name="hxtemplo" />
     <library name="polygonal-ds" />
     <library name="polygonal-core" />
     <library name="actuate" />

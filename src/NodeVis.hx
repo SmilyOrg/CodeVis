@@ -1,6 +1,7 @@
 package ;
 import com.furusystems.slf4hx.loggers.Logger;
 import com.furusystems.slf4hx.Logging;
+import flash.display.Graphics;
 import flash.display.Sprite;
 import flash.events.MouseEvent;
 import flash.geom.Point;
@@ -22,13 +23,18 @@ class DisplayNode extends Sprite {
 	static public var margin:Float = 5;
 	
 	var node:StateNode;
+	var unhighlightedColor:Int = 0x707070;
+	var highlightedColor:Int = 0xFFFFFF;
+	var defaultColor:Int;
 	
 	public var mark:Bool = false;
 	public var contentWidth:Float = 0;
+	public var highlighted = false;
 	
 	public function new(node:StateNode) {
 		this.node = node;
 		super();
+		highlighted = true; unhighlight();
 		redraw();
 		//addEventListener(MouseEvent.MOUSE_OVER, rollOver);
 		buttonMode = true;
@@ -36,17 +42,32 @@ class DisplayNode extends Sprite {
 	}
 	public function select() {
 		redraw(0xFFCC00);
-		scaleX = scaleY = 5;
-		Actuate.tween(this, 0.3, { scaleX: 1, scaleY: 1 } );
+		scaleX = scaleY = 5; Actuate.tween(this, 0.3, { scaleX: 1, scaleY: 1 } );
 	}
 	public function deselect() {
 		redraw();
+	}
+	public function highlight() {
+		if (!highlighted) {
+			highlighted = true;
+			defaultColor = highlightedColor;
+			redraw();
+			scaleX = scaleY = 2; Actuate.tween(this, 0.3, { scaleX: 1, scaleY: 1 } );
+		}
+	}
+	public function unhighlight() {
+		if (highlighted) {
+			highlighted = false;
+			defaultColor = unhighlightedColor;
+			redraw();
+		}
 	}
 	public function destroy() {
 		//removeEventListener(MouseEvent.MOUSE_OVER, rollOver);
 		node = null;
 	}
-	function redraw(color:Int = 0xFFFFFF) {
+	function redraw(color:Int = -1) {
+		if (color == -1) color = defaultColor;
 		var g = graphics;
 		g.clear();
 		g.beginFill(color, 1);
@@ -79,12 +100,14 @@ class NodeVis extends Sprite {
 	
 	var labelConfig:Configuration;
 	
-	var node:StateNode;
-	
+	var roots = new Array<StateNode>();
 	var displayMap:Map<StateNode, DisplayNode>;
 	var nodes = new Array<DisplayNode>();
 	var selected = new Array<DisplayNode>();
+	var labels = new Array<Sprite>();
 	var edgeLabels = new Map<StateNode.Edge, Sprite>();
+	
+	var nodeDisplay:Sprite = new Sprite();
 	
 	var drag:DisplayNode;
 	var dragOffset:Point = new Point();
@@ -104,6 +127,8 @@ class NodeVis extends Sprite {
 		format.backgroundAlpha = 1;
 		labelConfig.textFlowInitialFormat = format;
 		
+		addChild(nodeDisplay);
+		
 		addEventListener(MouseEvent.MOUSE_DOWN, mouseDown);
 		
 		//mouseEnabled = mouseChildren = false;
@@ -122,7 +147,7 @@ class NodeVis extends Sprite {
 	function mouseMove(e:MouseEvent) {
 		drag.x = mouseX-dragOffset.x;
 		drag.y = mouseY-dragOffset.y;
-		drawEdges(node, displayMap);
+		redrawAllEdges();
 		e.updateAfterEvent();
 	}
 	function mouseUp(e:MouseEvent) {
@@ -135,20 +160,36 @@ class NodeVis extends Sprite {
 	public function clear() {
 		var g = graphics;
 		g.clear();
-		var node;
+		var d;
 		clearSelection();
-		while ((node = nodes.pop()) != null) {
-			node.destroy();
-			removeChild(node);
+		while ((d = nodes.pop()) != null) {
+			d.destroy();
+			nodeDisplay.removeChild(d);
 		}
 		var label;
-		//while ((label = edgeLabels.pop()) != null) {
-			//removeChild(label);
-		//}
-		for (con in edgeLabels) {
-			removeChild(con);
+		while ((label = labels.pop()) != null) {
+			removeChild(label);
 		}
+		//for (con in edgeLabels) {
+			//removeChild(con);
+		//}
+		labels = new Array<Sprite>();
 		edgeLabels = new Map<StateNode.Edge, Sprite>();
+		displayMap = new Map<StateNode, DisplayNode>();
+		roots = new Array<StateNode>();
+	}
+	
+	public function clearHighlight() {
+		for (d in nodes) {
+			d.unhighlight();
+		}
+	}
+	
+	public function highlight(node:StateNode) {
+		var d = displayMap[node];
+		if (d != null) {
+			d.highlight();
+		}
 	}
 	
 	public function clearSelection() {
@@ -166,19 +207,31 @@ class NodeVis extends Sprite {
 		}
 	}
 	
-	public function visualize(node:StateNode) {
-		this.node = node;
-		
-		clear();
+	public function visualize(node:StateNode, name:String = "") {
 		
 		var g = graphics;
 		
-		displayMap = new Map<StateNode, DisplayNode>();
+		var prebounds = nodeDisplay.getBounds(nodeDisplay);
 		
-		createNodes(node, displayMap);
+		var lc = addLabel(name);
+		//lc.x = prebounds.right-lc.width-10;
+		lc.x = prebounds.right+10;
+		lc.y = prebounds.bottom+20;
+		
+		var rootDisplay = createNodes(node, displayMap);
+		rootDisplay.y = prebounds.bottom+20;
 		positionNodes(node, displayMap);
 		drawEdges(node, displayMap);
 		
+		roots.push(node);
+	}
+	
+	function redrawAllEdges() {
+		var g:Graphics = graphics;
+		g.clear();
+		for (root in roots) {
+			drawEdges(root, displayMap);
+		}
 	}
 	
 	function createNodes(node:StateNode, displayMap:Map<StateNode, DisplayNode>, parent:DisplayNode = null, level:Int = 0):DisplayNode {
@@ -187,7 +240,7 @@ class NodeVis extends Sprite {
 		
 		var d = new DisplayNode(node);
 		nodes.push(d);
-		addChild(d);
+		nodeDisplay.addChild(d);
 		//if (parent == null) {
 			//addChild(d);
 		//} else {
@@ -213,7 +266,7 @@ class NodeVis extends Sprite {
 	}
 	
 	function clearMarks() {
-		for (node in nodes) node.mark = false;
+		for (d in nodes) d.mark = false;
 	}
 	
 	function positionNodes(node:StateNode, displayMap:Map<StateNode, DisplayNode>, parent:DisplayNode = null) {
@@ -228,8 +281,6 @@ class NodeVis extends Sprite {
 		for (i in 0...num) {
 			var edge = node.targets[i];
 			var td = displayMap[edge.drain];
-			var old = td.mark;
-			
 			if (!td.mark) {
 				//td.x = d.x+tcx-(d.contentWidth-td.contentWidth)/2;
 				td.x = d.x+tcx-d.contentWidth+td.contentWidth;
@@ -238,11 +289,6 @@ class NodeVis extends Sprite {
 				tcx += td.contentWidth;
 				positionNodes(edge.drain, displayMap, d);
 			}
-			
-			var a = old ? td : d;
-			var b = old ? d : td;
-			drawEdge(edge, a, b);
-			
 		}
 		
 	}
@@ -251,8 +297,6 @@ class NodeVis extends Sprite {
 		
 		if (parent == null) {
 			clearMarks();
-			var g = graphics;
-			g.clear();
 		}
 		
 		var d = displayMap[node];
@@ -331,8 +375,6 @@ class NodeVis extends Sprite {
 		
 		var con = edgeLabels[edge];
 		if (con == null) {
-			con = new Sprite();
-			var rot = new Sprite();
 			
 			var label = edge.label;
 			var postfix = switch (edge.label) {
@@ -350,19 +392,7 @@ class NodeVis extends Sprite {
 			}
 			if (postfix != null) label += ' ($postfix)';
 			
-			
-			var tcm = new TextContainerManager(rot, labelConfig);
-			tcm.editingMode = EditingMode.READ_ONLY;
-			tcm.compositionWidth = Math.NaN;
-			tcm.compositionHeight = Math.NaN;
-			tcm.setText(label);
-			tcm.updateContainer();
-			
-			rot.y = -tcm.getContentBounds().height/2;
-			
-			con.addChild(rot);
-			con.mouseChildren = con.mouseEnabled = false;
-			addChild(con);
+			con = addLabel(label);
 			edgeLabels[edge] = con;
 		}
 		
@@ -370,6 +400,28 @@ class NodeVis extends Sprite {
 		con.y = y;
 		con.rotation = angle*180/Math.PI;
 		
+	}
+	
+	function addLabel(label:String) {
+		var con = new Sprite();
+		var rot = new Sprite();
+		
+		var tcm = new TextContainerManager(rot, labelConfig);
+		tcm.editingMode = EditingMode.READ_ONLY;
+		tcm.compositionWidth = Math.NaN;
+		tcm.compositionHeight = Math.NaN;
+		tcm.setText(label);
+		tcm.updateContainer();
+		
+		rot.y = -tcm.getContentBounds().height/2;
+		
+		con.addChild(rot);
+		con.mouseChildren = con.mouseEnabled = false;
+		addChild(con);
+		
+		labels.push(con);
+		
+		return con;
 	}
 	
 	

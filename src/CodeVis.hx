@@ -1,14 +1,20 @@
 package ;
 
-import byte.ByteData;
 import com.furusystems.slf4hx.loggers.Logger;
 import com.furusystems.slf4hx.Logging;
 import edit.Editor;
+import eu.liquify.ui.ListBox;
+import eu.liquify.ui.ListItem;
+import flash.display.BitmapData;
+import flash.display.DisplayObject;
+import flash.display.PNGEncoderOptions;
 import flash.display.Shape;
 import flash.display.Sprite;
 import flash.display.StageAlign;
+import flash.display.StageQuality;
 import flash.display.StageScaleMode;
 import flash.events.Event;
+import flash.events.KeyboardEvent;
 import flash.events.MouseEvent;
 import flash.events.TimerEvent;
 import flash.events.UncaughtErrorEvent;
@@ -16,21 +22,23 @@ import flash.external.ExternalInterface;
 import flash.geom.Matrix;
 import flash.geom.Transform;
 import flash.Lib;
+import flash.net.FileReference;
+import flash.ui.Keyboard;
+import flash.utils.ByteArray;
 import flash.utils.Timer;
+import flashx.textLayout.edit.SelectionState;
 import flashx.textLayout.events.SelectionEvent;
 import haxe.Http;
-import haxeparser.Data.Token;
-import haxeparser.Data.TokenDef;
-import haxeparser.HaxeLexer;
-import hxparse.Lexer;
+import hxparse.Ruleset.Ruleset;
 import hxparse.State;
 import hxparse.UnexpectedChar;
+import interfaces.LexerInterface;
 
 using StringTools;
 
-typedef LexerOption = {
-	type:Class<Lexer>,
-	ruleset:Dynamic
+typedef RootNode = {
+	node:StateNode,
+	ruleset:Ruleset<Dynamic>
 }
 
 class CodeVis extends Sprite {
@@ -46,6 +54,7 @@ class CodeVis extends Sprite {
 	private static var L:Logger = Logging.getLogger(CodeVis);
 	
 	var defaultPath = "test/Main.hx";
+	//var defaultPath = "test/listbase.h";
 	var consoleHeight:Float = 100;
 	var externalSize = true;
 	//var externalSize = false;
@@ -54,6 +63,7 @@ class CodeVis extends Sprite {
 	
 	var console:Console;
 	var editor:Editor;
+	var selectionState:SelectionState;
 	
 	var visContainer:Sprite;
 	var nodeVis:NodeVis;
@@ -61,25 +71,33 @@ class CodeVis extends Sprite {
 	var progressBar:Shape;
 	var progressBarProgress:Float = 0;
 	
+	/*
 	var lexers:Array<LexerOption> = [
 		{ type: HaxeLexer, ruleset: HaxeLexer.tok },
-		{ type: PrintfParser.PrintfLexer, ruleset: PrintfParser.PrintfLexer.tok }
+		{ type: PrintfParser.PrintfLexer, ruleset: PrintfParser.PrintfLexer.tok },
+		{ type: JSONParser.JSONLexer, ruleset: JSONParser.JSONLexer.tok },
+		{ type: templo.Lexer, ruleset: templo.Lexer.element },
+		{ type: CppLexer, ruleset: CppLexer.tok }
 	];
 	
 	var currentLexer:LexerOption;
+	*/
 	
-	var source:String;
+	var stepHandler:StepHandler;
+	var lexerfaces:Array<LexerInterface> = [];
+	var lexerface:LexerInterface;
+	
+	var source:String = null;
 	var sourceName:String;
-	var lexer:Lexer;
 	var tokenizationStart:Int;
-	var current:Token;
 	var totalTokens:Int;
 	
+	var roots:Array<RootNode>;
 	var nodeMap:Map<State, StateNode>;
-	var steps:Array<StateNode.Step>;
-	var posMap:Map<Int, Array<StateNode.Step>>;
 	
 	var delayedUpdate:Timer;
+	
+	var dropdown:ListBox;
 	
 	//var consoleVisible:Bool = false;
 	//var consoleBar:Sprite;
@@ -87,9 +105,14 @@ class CodeVis extends Sprite {
 	function new() {
 		super();
 		
-		currentLexer = lexers[0];
-		// TODO token mess?
-		//currentLexer = lexers[1];
+		roots = [];
+		nodeMap = new Map<State, StateNode>();
+		stepHandler = new StepHandler(nodeMap);
+		
+		lexerfaces.push(new interfaces.haxe.Interface.Lexerface(stepHandler));
+		lexerfaces.push(new interfaces.cpp.Interface.Lexerface(stepHandler));
+		//lexerfaces.push(new interfaces.MiscInterfaces.PrintfLexerface(stepHandler));
+		//lexerfaces.push(new interfaces.MiscInterfaces.TemploLexerface(stepHandler));
 		
 		console = new Console();
 		addChild(console);
@@ -111,6 +134,17 @@ class CodeVis extends Sprite {
 		visContainer.y = 20;
 		visContainer.addChild(nodeVis);
 		addChild(visContainer);
+		
+		dropdown = new ListBox();
+		dropdown.x = dropdown.gridWidth+5;
+		dropdown.y = 5;
+		dropdown.addChild(new ListItem("Haxe", lexerfaces[0]));
+		dropdown.addChild(new ListItem("C++", lexerfaces[1]));
+		dropdown.select = selected;
+		addChild(dropdown);
+		
+		setLexerface(lexerfaces[0]);
+		dropdown.activeData = lexerface;
 		
 		//consoleBar = new Sprite();
 		//consoleBar.buttonMode = true;
@@ -141,8 +175,25 @@ class CodeVis extends Sprite {
 			ExternalInterface.addCallback("locationHashChanged", locationHashChanged);
 			ExternalInterface.call("swfInit");
 		}
+		
 		filePath = defaultPath;
 		loadPath();
+	}
+	
+	function selected(list:ListBox) {
+		setLexerface(list.activeData);
+	}
+	
+	function setLexerface(lf:LexerInterface) {
+		lexerface = lf;
+		
+		while (roots.length > 0) roots.pop();
+		for (key in nodeMap.keys()) nodeMap.remove(key);
+		for (ruleset in lexerface.getRulesets()) {
+			roots.push({ node: StateNode.processGraphState(ruleset.state, nodeMap), ruleset: ruleset });
+		}
+		visualizeNodes();
+		lex();
 	}
 	
 	function addedToStage(e:Event) {
@@ -152,11 +203,13 @@ class CodeVis extends Sprite {
 		if (file != null) {
 			L.info("Loading file", file);
 		}
+		
 		stage.addEventListener(Event.RESIZE, stageResize);
 		stage.addEventListener(MouseEvent.MOUSE_WHEEL, mouseWheel);
 		stage.addEventListener(MouseEvent.MOUSE_WHEEL, mouseWheel, true);
 		stage.addEventListener(MouseEvent.MIDDLE_MOUSE_DOWN, mouseDown);
 		stage.addEventListener(MouseEvent.MIDDLE_MOUSE_UP, mouseUp);
+		stage.addEventListener(KeyboardEvent.KEY_DOWN, keyDown);
 		stageResize();
 	}
 	
@@ -218,32 +271,24 @@ class CodeVis extends Sprite {
 	function updateSource(source:String, sourceName:String) {
 		this.source = source;
 		this.sourceName = sourceName;
-		updateLexer(source, sourceName);
+		lex();
+	}
+	
+	function lex() {
+		if (source == null) return;
+		lexerface.update(source, sourceName);
 		tokenizeStart();
 	}
 	
-	function updateLexer(source:String, fileName:String) {
-		if (lexer != null) {
-			lexer.stateCallback = null;
-		}
+	//function updateLexerface(source:String, fileName:String) {
 		//lexer = new HaxeLexer(ByteData.ofString(source), fileName);
-		lexer = Type.createInstance(currentLexer.type, [ByteData.ofString(source), fileName]);
-		lexer.stateCallback = stateCallback;
-	}
+		//lexer = Type.createInstance(currentLexer.type, [ByteData.ofString(source), fileName]);
+		//lexer.stateCallback = stateCallback;
+	//}
 	
-	function stateCallback(state:State, position:Int, input:Int) {
-		var node = StateNode.processGraphState(state, nodeMap);
-		
-		var step = new StateNode.Step();
-		step.state = state;
-		step.position = position;
-		step.input = input;
-		if (node != null && input > -1) step.transition = node.edgeByInput[input];
-		
-		steps.push(step);
-		var ps = posMap[position];
-		if (ps == null) posMap[position] = ps = new Array<StateNode.Step>();
-		ps.push(step);
+	//function stateCallback(state:State, position:Int, input:Int) {
+	function stepCallback(step:StateNode.Step, node:StateNode) {
+		nodeVis.highlight(node);
 	}
 	
 	
@@ -259,13 +304,13 @@ class CodeVis extends Sprite {
 	
 	function tokenizeStart() {
 		tokenizeStop();
-		nodeVis.clear();
+		//nodeVis.clear();
+		nodeVis.clearHighlight();
 		
 		tokenizationStart = Lib.getTimer();
 		totalTokens = 0;
-		editor.clearTokens();
-		nodeMap = new Map<State, StateNode>();
-		posMap = new Map<Int, Array<StateNode.Step>>();
+		editor.clearTags();
+		//nodeMap = new Map<State, StateNode>();
 		
 		addEventListener(Event.ENTER_FRAME, tokenizeRun);
 		//nextToken();
@@ -289,29 +334,33 @@ class CodeVis extends Sprite {
 	}
 	
 	function nextToken():Bool {
-		steps = [];
+		
+		var tag = null;
 		try {
-			current = lexer.token(currentLexer.ruleset);
+			//tag = lexer.token(currentLexer.ruleset);
+			//tag = lexer.token(currentLexer.ruleset);
+			tag = lexerface.nextTag();
 		} catch(e:UnexpectedChar) {
 			L.error(e);
-			return true;
-		} catch(e:LexerError) {
-			L.error(e.msg);
 			return true;
 		}
 		
 		updateProgress();
 		
-		var end = current == null || current.tok == TokenDef.Eof;
+		//L.debug(tag);
+		
+		//var end = token == null || current.tok == TokenDef.Eof;
+		var end = tag == null;
 		if (end) return true;
 		
-		editor.addToken(current, steps);
+		//editor.addToken(current, steps);
+		editor.addTag(tag);
 		
 		return false;
 	}
 	
 	function updateProgress() {
-		progressBarProgress = current == null ? 1 : current.pos.max/source.length;
+		//progressBarProgress = current == null ? 1 : current.pos.max/source.length;
 		updateProgressBar();
 	}
 	
@@ -328,27 +377,83 @@ class CodeVis extends Sprite {
 		L.info('Lexed $totalTokens tokens in ${Lib.getTimer()-tokenizationStart}ms');
 		removeEventListener(Event.ENTER_FRAME, tokenizeRun);
 		editor.updateFlow();
-		visualizeNodes();
+		selectionChange();
+		
+		//parseSource();
+		
+		//screenshot();
+		//visualizeNodes();
 		//delayedUpdate.reset();
 		//delayedUpdate.start();
 	}
 	
-	function selectionChange(e:SelectionEvent) {
+	/*
+	function parseSource() {
+		var ast = parser.parse();
+		for (decl in ast.decls) {
+			editor.addTag(new HaxeTags.DeclarationTag(decl));
+			switch (decl) {
+				case EClass( { data: data } ):
+					for (field in data) {
+						editor.addTag(new HaxeTags.FieldTag(field));
+					}
+				default:
+			}
+		}
+	}
+	*/
+	
+	function screenshot(source:DisplayObject) {
+		var bounds = source.getBounds(source);
+		
+		var margin = 20;
+		
+		var cw = bounds.width, ch = bounds.height;
+		//var tw = 800, th = Math.ceil(tw/cw*ch);
+		
+		//var data = new BitmapData(800, 600, false, stage.color);
+		//var data = new BitmapData(1920, 1080, false, stage.color);
+		var data = new BitmapData(1920*2, 1080*2, false, stage.color);
+		
+		var tw = data.width-margin*2, th = data.height-margin*2;
+		var scale = tw/th < cw/ch ? tw/cw : th/ch;
+		
+		var m = new Matrix();
+		m.translate(-bounds.left, -bounds.top);
+		m.scale(scale, scale);
+		m.translate(tw-cw*scale+margin, margin);
+		
+		data.drawWithQuality(source, m, null, null, null, true, StageQuality.HIGH_16X16);
+		
+		//addChild(new Bitmap(data));
+		
+		var bytes = new ByteArray();
+		data.encode(data.rect, new PNGEncoderOptions(), bytes);
+		var f = new FileReference();
+		f.save(bytes, "screenshot.png");
+	}
+	
+	function selectionChange(e:SelectionEvent = null) {
 		nodeVis.clearSelection();
 		editor.hideTooltip();
 		
-		var s = e.selectionState;
+		var s = e == null ? selectionState : e.selectionState;
+		if (s == null) return;
+		
+		selectionState = s;
 		//var pos = s.anchorPosition;
 		var acc = new Array<StateNode.Step>();
 		var limit = 50;
+		var start = s.absoluteStart;
 		var end = s.absoluteEnd;
-		var diff = end-s.absoluteStart;
+		var diff = end-start;
 		//if (diff <= 0) return;
-		if (diff <= 0) end += 1;
+		//if (diff <= 0) end += 1;
+		if (diff <= 0) start -= 1;
 		var trim = diff > limit;
-		end = trim ? s.absoluteStart+limit : end;
-		for (pos in s.absoluteStart...end) {
-			var ps = posMap[pos];
+		end = trim ? start+limit : end;
+		for (pos in start...end) {
+			var ps = stepHandler.posMap[pos];
 			if (ps != null) acc = acc.concat(ps);
 		}
 		for (node in acc) {
@@ -363,16 +468,22 @@ class CodeVis extends Sprite {
 		if (!keys.hasNext()) return;
 		var node = nodeMap[keys.next()];
 		
-		var root = node;
-		while (root.parent != null) root = root.parent;
+		//var root = node;
+		//while (root.parent != null) root = root.parent;
 		
 		//L.debug("root", root.targets.join("\n"));
 		
 		nodeVis.x = nodeVis.y = 0;
 		nodeVis.scaleX = nodeVis.scaleY = 1;
-		nodeVis.visualize(root);
+		
+		nodeVis.clear();
+		for (root in roots) {
+			nodeVis.visualize(root.node, root.ruleset.name);
+		}
 		
 		updateNodeVis();
+		
+		//screenshot();
 	}
 	
 	function update(e:Event) {
@@ -381,8 +492,18 @@ class CodeVis extends Sprite {
 	}
 	
 	function updateNodeVis() {
+		if (stage == null) return;
 		var bounds = nodeVis.getBounds(nodeVis);
 		visContainer.x = stage.stageWidth-bounds.right;
+	}
+	
+	function keyDown(e:KeyboardEvent) {
+		if (e.ctrlKey) {
+			switch (e.keyCode) {
+				case Keyboard.N: screenshot(nodeVis);
+				case Keyboard.M: screenshot(this);
+			}
+		}
 	}
 	
 	function mouseWheel(e:MouseEvent) {
@@ -446,6 +567,7 @@ class CodeVis extends Sprite {
 		console.resize(stage.stageWidth, consoleHeight);
 		updateProgressBar();
 		updateNodeVis();
+		dropdown.x = stage.stageWidth-5;
 	}
 	
 }

@@ -109,7 +109,7 @@ class Editor extends Sprite {
 	var textDisplay:Sprite = new Sprite();
 	var overlay:Shape = new Shape();
 	
-	var tokenTags:Array<TokenTag> = [];
+	var tokenTags:Array<Tag> = [];
 	var tokenDisplay:Sprite = new Sprite();
 	
 	var valid:Bool = true;
@@ -219,7 +219,7 @@ class Editor extends Sprite {
 		//textDisplay.dispatchEvent(e);
 	}
 	
-	public function clearTokens() {
+	public function clearTags() {
 		var tag;
 		while ((tag = tokenTags.pop()) != null) {
 			tag.destroy();
@@ -227,25 +227,70 @@ class Editor extends Sprite {
 		}
 	}
 	
-	public function addToken(token:Token, steps:Array<StateNode.Step>) {
-		var min = token.pos.min;
-		var max = token.pos.max;
+	public function addTag(tag:Tag) {
 		
-		///*
-		var boundsMin = getCharBoundsAtPosition(min);
-		var boundsMax = getCharBoundsAtPosition(max);
+		var c = container.flowComposer;
 		
-		if (boundsMin == null || boundsMax == null) return;
-		//L.debug("bounds", Stopwatch.tock());
+		c.composeToPosition(tag.max);
 		
-		var tag:TokenTag = new TokenTag(token, steps);
-		tag.x = boundsMin.x;
-		tag.y = boundsMin.y-2;
-		tag.redraw(boundsMax.x-boundsMin.x, boundsMin.height+2);
+		var minLine = c.findLineIndexAtPosition(tag.min);
+		var maxLine = c.findLineIndexAtPosition(tag.max);
+		
+		var minBounds = getCharBoundsAtPosition(tag.min);
+		var maxBounds = getCharBoundsAtPosition(tag.max);
+		
+		if (minBounds == null || maxBounds == null) return;
+		
+		var selection:Array<Rectangle>;
+		
+		var minLineBounds = c.getLineAt(minLine).getBounds();
+		
+		tag.x = minBounds.x;
+		tag.y = minLineBounds.y;
+		
+		if (minLine == maxLine) {
+			selection = [new Rectangle(0, 0, maxBounds.right-minBounds.left, minBounds.height)];
+		} else {
+			//tag.x = minLineBounds.left;
+			selection = [new Rectangle(0, 0, minLineBounds.right-minBounds.x, minLineBounds.height)];
+			for (line in (minLine+1)...maxLine) {
+				var flowLine = c.getLineAt(line);
+				var bounds = flowLine.getBounds();
+				bounds.offset(-minBounds.x, -tag.y);
+				selection.push(bounds);
+				//L.debug(line, selection[selection.length-1]);
+			}
+			var maxLineBounds = c.getLineAt(maxLine).getBounds();
+			selection.push(new Rectangle(maxLineBounds.left-minBounds.x, maxLineBounds.y-tag.y, maxBounds.right-maxLineBounds.left, maxLineBounds.height));
+		}
+		
+		//tag.redraw(boundsMax.x-boundsMin.x, boundsMin.height+2);
+		
+		//tag.x = boundsMin.x;
+		//tag.y = minBounds.y;
+		tag.redraw(selection);
+		
 		tokenDisplay.addChild(tag);
 		tokenTags.push(tag);
+	}
+	
+	//public function addToken(token:Token, steps:Array<StateNode.Step>) {
+		//var min = token.pos.min;
+		//var max = token.pos.max;
+		
+		///*
+		//var boundsMin = getCharBoundsAtPosition(min);
+		//var boundsMax = getCharBoundsAtPosition(max);
+		//
+		//if (boundsMin == null || boundsMax == null) return;
+		//
+		//var tag:Tag = new Tag(token, steps);
+		//tag.x = boundsMin.x;
+		//tag.y = boundsMin.y-2;
+		//tag.redraw(boundsMax.x-boundsMin.x, boundsMin.height+2);
+		//tokenDisplay.addChild(tag);
+		//tokenTags.push(tag);
 		//*/
-		//L.debug("tag", Stopwatch.tock());
 		
 		/*
 		var paragraph:ParagraphElement = cast textflow.getChildAt(0);
@@ -293,7 +338,7 @@ class Editor extends Sprite {
 		//var selection = new SelectionState(textflow, min, max);
 		//cast(textflow.interactionManager, IEditManager).applyLeafFormat(tokenFormat, selection);
 		
-	}
+	//}
 	
 	function updateText() {
 		textflow.flowComposer.updateAllControllers();
@@ -388,7 +433,8 @@ class Editor extends Sprite {
 		
 		var bounds = getCharBoundsAtPosition(pos);
 		tooltip.x = bounds.x;
-		tooltip.y = bounds.y-tooltip.height-8;
+		tooltip.y = bounds.y-tooltip.height;
+		//tooltip.y = bounds.bottom;
 	}
 	
 	private function textChanged(e:FlowOperationEvent) {
