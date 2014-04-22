@@ -30,6 +30,7 @@
 		function swfInit() {
 			swf = document.getElementById(attributes.id);
 			window.addEventListener("hashchange", locationHashChanged);
+			locationHashChanged();
 		}
 		
 		function resizeSWF(w, h) {
