@@ -3,6 +3,8 @@ package ;
 import com.furusystems.slf4hx.loggers.Logger;
 import com.furusystems.slf4hx.Logging;
 import edit.Editor;
+import eu.liquify.ui.ListBox;
+import eu.liquify.ui.ListItem;
 import flash.display.BitmapData;
 import flash.display.DisplayObject;
 import flash.display.PNGEncoderOptions;
@@ -27,7 +29,6 @@ import flash.utils.Timer;
 import flashx.textLayout.edit.SelectionState;
 import flashx.textLayout.events.SelectionEvent;
 import haxe.Http;
-import hxparse.Lexer;
 import hxparse.Ruleset.Ruleset;
 import hxparse.State;
 import hxparse.UnexpectedChar;
@@ -52,8 +53,8 @@ class CodeVis extends Sprite {
 	
 	private static var L:Logger = Logging.getLogger(CodeVis);
 	
-	//var defaultPath = "test/Main.hx";
-	var defaultPath = "test/listbase.h";
+	var defaultPath = "test/Main.hx";
+	//var defaultPath = "test/listbase.h";
 	var consoleHeight:Float = 100;
 	var externalSize = true;
 	//var externalSize = false;
@@ -86,7 +87,7 @@ class CodeVis extends Sprite {
 	var lexerfaces:Array<LexerInterface> = [];
 	var lexerface:LexerInterface;
 	
-	var source:String;
+	var source:String = null;
 	var sourceName:String;
 	var tokenizationStart:Int;
 	var totalTokens:Int;
@@ -95,6 +96,8 @@ class CodeVis extends Sprite {
 	var nodeMap:Map<State, StateNode>;
 	
 	var delayedUpdate:Timer;
+	
+	var dropdown:ListBox;
 	
 	//var consoleVisible:Bool = false;
 	//var consoleBar:Sprite;
@@ -110,12 +113,6 @@ class CodeVis extends Sprite {
 		lexerfaces.push(new interfaces.cpp.Interface.Lexerface(stepHandler));
 		//lexerfaces.push(new interfaces.MiscInterfaces.PrintfLexerface(stepHandler));
 		//lexerfaces.push(new interfaces.MiscInterfaces.TemploLexerface(stepHandler));
-		
-		lexerface = lexerfaces[0];
-		for (ruleset in lexerface.getRulesets()) {
-			roots.push({ node: StateNode.processGraphState(ruleset.state, nodeMap), ruleset: ruleset });
-		}
-		
 		
 		console = new Console();
 		addChild(console);
@@ -137,6 +134,17 @@ class CodeVis extends Sprite {
 		visContainer.y = 20;
 		visContainer.addChild(nodeVis);
 		addChild(visContainer);
+		
+		dropdown = new ListBox();
+		dropdown.x = dropdown.gridWidth+5;
+		dropdown.y = 5;
+		dropdown.addChild(new ListItem("Haxe", lexerfaces[0]));
+		dropdown.addChild(new ListItem("C++", lexerfaces[1]));
+		dropdown.select = selected;
+		addChild(dropdown);
+		
+		setLexerface(lexerfaces[0]);
+		dropdown.activeData = lexerface;
 		
 		//consoleBar = new Sprite();
 		//consoleBar.buttonMode = true;
@@ -172,10 +180,24 @@ class CodeVis extends Sprite {
 		loadPath();
 	}
 	
+	function selected(list:ListBox) {
+		setLexerface(list.activeData);
+	}
+	
+	function setLexerface(lf:LexerInterface) {
+		lexerface = lf;
+		
+		while (roots.length > 0) roots.pop();
+		for (key in nodeMap.keys()) nodeMap.remove(key);
+		for (ruleset in lexerface.getRulesets()) {
+			roots.push({ node: StateNode.processGraphState(ruleset.state, nodeMap), ruleset: ruleset });
+		}
+		visualizeNodes();
+		lex();
+	}
+	
 	function addedToStage(e:Event) {
 		loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, uncaughtError);
-		
-		visualizeNodes();
 		
 		var file = loaderInfo.parameters.file;
 		if (file != null) {
@@ -249,8 +271,12 @@ class CodeVis extends Sprite {
 	function updateSource(source:String, sourceName:String) {
 		this.source = source;
 		this.sourceName = sourceName;
+		lex();
+	}
+	
+	function lex() {
+		if (source == null) return;
 		lexerface.update(source, sourceName);
-		//parser = new HaxeParser(ByteData.ofString(source), sourceName);
 		tokenizeStart();
 	}
 	
@@ -466,6 +492,7 @@ class CodeVis extends Sprite {
 	}
 	
 	function updateNodeVis() {
+		if (stage == null) return;
 		var bounds = nodeVis.getBounds(nodeVis);
 		visContainer.x = stage.stageWidth-bounds.right;
 	}
@@ -540,6 +567,7 @@ class CodeVis extends Sprite {
 		console.resize(stage.stageWidth, consoleHeight);
 		updateProgressBar();
 		updateNodeVis();
+		dropdown.x = stage.stageWidth-5;
 	}
 	
 }
