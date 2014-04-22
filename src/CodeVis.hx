@@ -32,9 +32,16 @@ import haxe.Http;
 import hxparse.Ruleset.Ruleset;
 import hxparse.State;
 import hxparse.UnexpectedChar;
+import interfaces.haxe.Interface.Lexerface;
 import interfaces.LexerInterface;
 
 using StringTools;
+
+typedef LexerOption = {
+	name:String,
+	lf:LexerInterface,
+	ext:Array<String>
+}
 
 typedef RootNode = {
 	node:StateNode,
@@ -59,7 +66,7 @@ class CodeVis extends Sprite {
 	var externalSize = true;
 	//var externalSize = false;
 	
-	var filePath:String;
+	var filePath:String = null;
 	
 	var console:Console;
 	var editor:Editor;
@@ -82,6 +89,8 @@ class CodeVis extends Sprite {
 	
 	var currentLexer:LexerOption;
 	*/
+	
+	var lexers:Array<LexerOption>;
 	
 	var stepHandler:StepHandler;
 	var lexerfaces:Array<LexerInterface> = [];
@@ -109,8 +118,17 @@ class CodeVis extends Sprite {
 		nodeMap = new Map<State, StateNode>();
 		stepHandler = new StepHandler(nodeMap);
 		
-		lexerfaces.push(new interfaces.haxe.Interface.Lexerface(stepHandler));
-		lexerfaces.push(new interfaces.cpp.Interface.Lexerface(stepHandler));
+		lexers = [
+			{ name: "Haxe", ext: [".hx"], lf: new interfaces.haxe.Interface.Lexerface(stepHandler) },
+			{ name: "C++", ext: [".h", ".cpp"], lf: new interfaces.cpp.Interface.Lexerface(stepHandler) }
+		];
+		
+		for (lo in lexers) {
+			lexerfaces.push(lo.lf);
+		}
+		
+		//lexerfaces.push(lfhaxe = new interfaces.haxe.Interface.Lexerface(stepHandler));
+		//lexerfaces.push(lfcpp = new interfaces.cpp.Interface.Lexerface(stepHandler));
 		//lexerfaces.push(new interfaces.MiscInterfaces.PrintfLexerface(stepHandler));
 		//lexerfaces.push(new interfaces.MiscInterfaces.TemploLexerface(stepHandler));
 		
@@ -138,8 +156,7 @@ class CodeVis extends Sprite {
 		dropdown = new ListBox();
 		dropdown.x = dropdown.gridWidth+5;
 		dropdown.y = 5;
-		dropdown.addChild(new ListItem("Haxe", lexerfaces[0]));
-		dropdown.addChild(new ListItem("C++", lexerfaces[1]));
+		for (lo in lexers) dropdown.addChild(new ListItem(lo.name, lo.lf));
 		dropdown.select = selected;
 		addChild(dropdown);
 		
@@ -176,8 +193,10 @@ class CodeVis extends Sprite {
 			ExternalInterface.call("swfInit");
 		}
 		
-		filePath = defaultPath;
-		loadPath();
+		if (filePath == null) {
+			filePath = defaultPath;
+			loadPath();
+		}
 	}
 	
 	function selected(list:ListBox) {
@@ -249,6 +268,15 @@ class CodeVis extends Sprite {
 	
 	function loadPath() {
 		L.info("Loading", filePath);
+		for (lo in lexers) {
+			for (ext in lo.ext) {
+				if (filePath.endsWith(ext)) {
+					L.info('File extension $ext detected, switching to ${lo.name}');
+					dropdown.activeData = lo.lf;
+					selected(dropdown);
+				}
+			}
+		}
 		var http = new Http(filePath);
 		http.onData = fileLoaded;
 		http.onError = loadError;

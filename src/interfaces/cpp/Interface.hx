@@ -64,7 +64,8 @@ class TokenTag extends StepTag {
 			case Comment(_),
 			     CommentLine(_): Theme.comment;
 				 
-			case Sharp(_): Theme.directive;
+			case Sharp(_),
+			     Include(_, _): Theme.directive;
 			
 			
 			default: Theme.foreground;
