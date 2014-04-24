@@ -63,8 +63,8 @@ class CodeVis extends Sprite {
 	var defaultPath = "test/Main.hx";
 	//var defaultPath = "test/listbase.h";
 	var consoleHeight:Float = 100;
-	var externalSize = true;
-	//var externalSize = false;
+	//var externalSize = true;
+	var externalSize = false;
 	
 	var filePath:String = null;
 	
@@ -259,11 +259,19 @@ class CodeVis extends Sprite {
 		
 		hash = hash.substr(1);
 		
-		if (hash.charAt(0) == "/") {
-			filePath = hash.substr(1);
-			if (filePath == "") filePath = defaultPath;
-			loadPath();
+		switch (hash.charAt(0)) {
+			case "/":
+				filePath = hash.substr(1);
+				if (filePath == "") filePath = defaultPath;
+				loadPath();
+			case "!":
+				if (hash.substr(1) == "externalSize") {
+					externalSize = !externalSize;
+					resizeToContent();
+					stageResize();
+				}
 		}
+		
 	}
 	
 	function loadPath() {
@@ -584,7 +592,7 @@ class CodeVis extends Sprite {
 	}
 	
 	function resizeToContent() {
-		if (externalSize && ExternalInterface.available) ExternalInterface.call("resizeSWF", -1, height);
+		if (ExternalInterface.available) ExternalInterface.call("resizeSWF", -1, externalSize ? height : "100%");
 	}
 	
 	function stageResize(e:Event = null) {
