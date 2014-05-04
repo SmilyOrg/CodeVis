@@ -62,6 +62,7 @@ class CodeVis extends Sprite {
 	
 	var defaultPath = "test/Main.hx";
 	//var defaultPath = "test/listbase.h";
+	//var defaultPath = "test/TestEscape.hx";
 	var consoleHeight:Float = 100;
 	//var externalSize = true;
 	var externalSize = false;
@@ -536,8 +537,8 @@ class CodeVis extends Sprite {
 	function keyDown(e:KeyboardEvent) {
 		if (e.ctrlKey) {
 			switch (e.keyCode) {
-				case Keyboard.N: screenshot(nodeVis);
-				case Keyboard.M: screenshot(this);
+				case Keyboard.A: screenshot(nodeVis);
+				case Keyboard.S: screenshot(this);
 			}
 		}
 	}
