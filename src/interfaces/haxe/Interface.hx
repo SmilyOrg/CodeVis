@@ -30,7 +30,7 @@ class Lexerface implements LexerInterface {
 			var token = lexer.token(HaxeLexer.tok);
 			return token == null || token.tok == TokenDef.Eof ? null : new TokenTag(sh.posttoken(), token);
 		} catch (e:LexerError) {
-			L.error(e.msg);
+			L.error(e.msg, '${e.pos.file} ${e.pos.min}:${e.pos.max}');
 		}
 		return null;
 	}
