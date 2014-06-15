@@ -117,7 +117,7 @@ class Tag extends Sprite {
 		
 		switch (type) {
 			case Filled:
-				g.beginFill(color, 0.2);
+				g.beginFill(color, 0.3);
 				drawRoundSelection(selection, r);
 				
 				//g.drawRoundRect(0, 0, w, h, r, r);
