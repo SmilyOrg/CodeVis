@@ -23,6 +23,7 @@ class Lexerface implements LexerInterface {
 		}
 		lexer = new HaxeLexer(ByteData.ofString(source), sourceName);
 		sh.init(lexer);
+		
 	}
 	public function nextTag() {
 		sh.pretoken();

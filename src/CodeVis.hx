@@ -28,11 +28,11 @@ import flash.utils.ByteArray;
 import flash.utils.Timer;
 import flashx.textLayout.edit.SelectionState;
 import flashx.textLayout.events.SelectionEvent;
+import generation.Generator;
 import haxe.Http;
 import hxparse.Ruleset.Ruleset;
 import hxparse.State;
 import hxparse.UnexpectedChar;
-import interfaces.haxe.Interface.Lexerface;
 import interfaces.LexerInterface;
 
 using StringTools;
@@ -63,6 +63,7 @@ class CodeVis extends Sprite {
 	var defaultPath = "test/Main.hx";
 	//var defaultPath = "test/listbase.h";
 	//var defaultPath = "test/TestEscape.hx";
+	//var defaultPath = "test/barragetest.brg";
 	var consoleHeight:Float = 100;
 	//var externalSize = true;
 	var externalSize = false;
@@ -108,6 +109,8 @@ class CodeVis extends Sprite {
 	var delayedUpdate:Timer;
 	
 	var dropdown:ListBox;
+	var gen:Generator;
+	var genTimer:Timer;
 	
 	//var consoleVisible:Bool = false;
 	//var consoleBar:Sprite;
@@ -120,8 +123,9 @@ class CodeVis extends Sprite {
 		stepHandler = new StepHandler(nodeMap);
 		
 		lexers = [
-			{ name: "Haxe", ext: [".hx"], lf: new interfaces.haxe.Interface.Lexerface(stepHandler) },
-			{ name: "C++", ext: [".h", ".cpp"], lf: new interfaces.cpp.Interface.Lexerface(stepHandler) }
+			{ name: "Haxe",    ext: [".hx"],        lf: new interfaces.haxe.Interface.Lexerface(stepHandler) },
+			{ name: "C++",     ext: [".h", ".cpp"], lf: new interfaces.cpp.Interface.Lexerface(stepHandler) },
+			{ name: "Barrage", ext: [".brg"],       lf: new interfaces.barrage.Interface.Lexerface(stepHandler) },
 		];
 		
 		for (lo in lexers) {
@@ -132,6 +136,10 @@ class CodeVis extends Sprite {
 		//lexerfaces.push(lfcpp = new interfaces.cpp.Interface.Lexerface(stepHandler));
 		//lexerfaces.push(new interfaces.MiscInterfaces.PrintfLexerface(stepHandler));
 		//lexerfaces.push(new interfaces.MiscInterfaces.TemploLexerface(stepHandler));
+		
+		
+		genTimer = new Timer(10);
+		genTimer.addEventListener(TimerEvent.TIMER, generateNext);
 		
 		console = new Console();
 		addChild(console);
@@ -200,6 +208,23 @@ class CodeVis extends Sprite {
 		}
 	}
 	
+	function generateRandom() {
+		gen = new Generator(roots[0].node);
+		genTimer.start();
+	}
+	
+	function generateNext(e:TimerEvent = null) {
+		var c = gen.next();
+		nodeVis.highlight(gen.lastEdge.drain);
+		//if (c == -1) {
+			//gen.reset();
+			//editor.text = "";
+			//return;
+		//}
+		editor.text += String.fromCharCode(c);
+		if (editor.text.length > 100) genTimer.stop();
+	}
+	
 	function selected(list:ListBox) {
 		setLexerface(list.activeData);
 	}
@@ -214,6 +239,7 @@ class CodeVis extends Sprite {
 		}
 		visualizeNodes();
 		lex();
+		//generateRandom();
 	}
 	
 	function addedToStage(e:Event) {

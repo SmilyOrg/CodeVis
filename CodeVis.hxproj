@@ -32,6 +32,7 @@
     <library name="hxparse" />
     <library name="haxeparser" />
     <library name="cppparser" />
+    <library name="barrage" />
     <library name="hxtemplo" />
     <library name="polygonal-ds" />
     <library name="polygonal-core" />

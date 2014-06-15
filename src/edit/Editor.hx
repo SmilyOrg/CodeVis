@@ -417,7 +417,7 @@ class Editor extends Sprite {
 		
 		var paragraph:ParagraphElement = cast textflow.getChildAt(0);
 		
-		paragraph.replaceChildren(0, paragraph.numChildren-1, span);
+		paragraph.replaceChildren(0, paragraph.numChildren, span);
 		
 		updateText();
 		return v;
